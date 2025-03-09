@@ -1606,18 +1606,20 @@
       "learn-how-to-share-feedback": {
         "title": "Дізнайтесь, як ділитись фідбеком",
         "intro": [
-          "In this course, you will see ways of telling other people how you feel about their work, highlighting both their strengths and points for improvement."
+          "У цьому курсі ви дізнаєтесь, як ділитись зворотним зв’язком щодо роботи, підкреслюючи сильні сторони і моменти для покращення."
         ]
       },
       "learn-how-to-share-your-opinion": {
         "title": "Дізнайтесь, як ділитись своєю думкою",
         "intro": [
-          "This course will show you how to express your ideas and feeling towards topics in a discussion."
+          "У цьому курсі ви дізнаєтесь, як ділитись своїми ідеями і емоціями під час дискусії."
         ]
       },
       "learn-how-to-express-agreement": {
         "title": "Дізнайтесь, як виражати згоду",
-        "intro": ["", ""]
+        "intro": [
+          "In this course, you will learn to express agreement in different professional settings."
+        ]
       },
       "learn-how-to-express-disagreement": {
         "title": "Дізнайтесь, як виражати незгоду",
@@ -1696,7 +1698,8 @@
     "intro": [
       "Цей курс надає комплексний шлях, щоб стати сертифікованим Full Stack розробником. У ньому охоплено всі технології, необхідні для створення сучасних масштабованих програм від початку до кінця.",
       "Завдяки поєднанню інтерактивних уроків, практичних завдань та реальних проєктів, ви опануєте як Front End, так і Back End. Ви працюватимете з HTML, CSS і JavaScript для створення адаптивних інтерфейсів, досліджуватимете React і TypeScript для створення складних вебзастосунків та навчитеся керувати даними за допомогою реляційних баз даних. На стороні Back End ви використовуватимете Git, Npm, Node.js і Python для створення потужних серверних рішень.",
-      "Наприкінці курсу ви отримаєте практичні навички та досвід, які дозволять впевнено розробляти повноцінні вебзастосунки, що підготує вас до успішної кар’єри Full Stack розробника."
+      "Наприкінці курсу ви отримаєте практичні навички та досвід, які дозволять впевнено розробляти повноцінні вебзастосунки, що підготує вас до успішної кар’єри Full Stack розробника.",
+      "Для отримання цієї сертифікації потрібно багато часу і зусиль. Якщо ви розпочнете зараз, то будете готові до решти матеріалу і кінцевого екзамену як тільки ми опублікуємо їх протягом найближчих місяців."
     ],
     "chapters": {
       "freecodecamp": "Вітання",
@@ -2597,7 +2600,7 @@
       "lab-sentence-maker": {
         "title": "Створіть творця речень",
         "intro": [
-          "In this lab, you will continue practicing with strings and concatenation by creating and customizing various stories."
+          "У цій лабораторній роботі ви продовжите працювати з рядками і конкатенацією, створюючи та налаштовуючи різні історії."
         ]
       },
       "lecture-working-with-data-types": {
@@ -3332,7 +3335,7 @@
       "lecture-understanding-asynchronous-programming": {
         "title": "Знайомство з асинхронним програмуванням",
         "intro": [
-          "In these lecture videos, you will learn about asynchronous programming in JavaScript. You will learn about the differences between synchronous and asynchronous programming, how the <code>async</code> keyword works, the <code>Fetch</code> API, promises, <code>async/await</code>, the <code>Geolocation</code> API, and much more."
+          "У цих відеолекціях ви дізнаєтесь про асинхронне програмування в JavaScript. Ви дізнаєтесь про відмінності між синхронним і асинхронним програмуванням, як працює ключове слово <code>async</code>, <code>Fetch</code> API, проміси, <code>async/await</code>, <code>Geolocation</code> API та багато іншого."
         ]
       },
       "workshop-fcc-authors-page": {
