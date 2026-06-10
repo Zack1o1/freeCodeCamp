@@ -1,21 +1,25 @@
+import i18next from 'i18next';
 import { WindowLocation } from '@gatsbyjs/reach-router';
 import { graphql } from 'gatsby';
-import { uniq, isEmpty, last } from 'lodash-es';
+import { isEmpty, last } from 'lodash-es';
 import React, { useEffect, memo, useMemo } from 'react';
 import Helmet from 'react-helmet';
 import { useTranslation, withTranslation } from 'react-i18next';
 import { connect } from 'react-redux';
-import { configureAnchors } from 'react-scrollable-anchor';
+import { scroller } from 'react-scroll';
 import { bindActionCreators, Dispatch } from 'redux';
 import { createSelector } from 'reselect';
 import { Container, Col, Row, Spacer } from '@freecodecamp/ui';
+import { useFeatureValue } from '@growthbook/growthbook-react';
 
-import { SuperBlocks } from '../../../../shared/config/curriculum';
-import { getSuperBlockTitleForMap } from '../../utils/superblock-map-titles';
+import {
+  SuperBlocks,
+  certificationCollectionSuperBlocks
+} from '@freecodecamp/shared/config/curriculum';
+import callGA from '../../analytics/call-ga';
 import DonateModal from '../../components/Donation/donation-modal';
 import Login from '../../components/Header/components/login';
 import Map from '../../components/Map';
-import callGA from '../../analytics/call-ga';
 import { tryToShowDonationModal } from '../../redux/actions';
 import {
   isSignedInSelector,
@@ -24,16 +28,18 @@ import {
   userFetchStateSelector,
   signInLoadingSelector
 } from '../../redux/selectors';
-import type { User } from '../../redux/prop-types';
-import { CertTitle, liveCerts } from '../../../config/cert-and-project-map';
-import { superBlockToCertMap } from '../../../../shared/config/certification-settings';
-import { BlockLayouts, BlockTypes } from '../../../../shared/config/blocks';
-import Block from './components/block';
-import CertChallenge from './components/cert-challenge';
+import type {
+  SuperBlockStructure,
+  User,
+  ChapterBasedSuperBlockStructure
+} from '../../redux/prop-types';
+import { liveCerts } from '../../../config/cert-and-project-map';
+import { superBlockToCertMap } from '@freecodecamp/shared/config/certification-settings';
+import { BlockLayouts, BlockLabel } from '@freecodecamp/shared/config/blocks';
 import LegacyLinks from './components/legacy-links';
 import HelpTranslate from './components/help-translate';
 import SuperBlockIntro from './components/super-block-intro';
-import { SuperBlockAccordion } from './components/super-block-accordion';
+import SuperBlockMap from './components/super-block-map';
 import { resetExpansion, toggleBlock } from './redux';
 
 import './intro.css';
@@ -46,10 +52,10 @@ type FetchState = {
 
 type ChallengeNode = {
   challenge: {
-    fields: { slug: string; blockName: string };
+    fields: { slug: string };
     id: string;
     block: string;
-    blockType: BlockTypes;
+    blockLabel?: BlockLabel;
     challengeType: number;
     title: string;
     order: number;
@@ -65,6 +71,7 @@ type SuperBlockProps = {
   currentChallengeId: string;
   data: {
     allChallengeNode: { nodes: ChallengeNode[] };
+    allSuperBlockStructure: { nodes: SuperBlockStructure[] };
   };
   expandedState: {
     [key: string]: boolean;
@@ -75,16 +82,12 @@ type SuperBlockProps = {
   location: WindowLocation<{ breadcrumbBlockClick: string }>;
   pageContext: {
     superBlock: SuperBlocks;
-    title: CertTitle;
-    certification: string;
   };
   resetExpansion: () => void;
   toggleBlock: (arg0: string) => void;
   tryToShowDonationModal: () => void;
-  user: User;
+  user: User | null;
 };
-
-configureAnchors({ offset: -40, scrollDuration: 0 });
 
 const mapStateToProps = (state: Record<string, unknown>) => {
   return createSelector(
@@ -98,7 +101,7 @@ const mapStateToProps = (state: Record<string, unknown>) => {
       isSignedIn,
       signInLoading: boolean,
       fetchState: FetchState,
-      user: User
+      user: User | null
     ) => ({
       currentChallengeId,
       isSignedIn,
@@ -118,6 +121,16 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
     },
     dispatch
   );
+const handleHashChange = () => {
+  const id = window.location.hash.replace('#', '');
+  if (id) {
+    scroller.scrollTo(id, {
+      smooth: true,
+      duration: 500,
+      offset: -50
+    });
+  }
+};
 
 const SuperBlockIntroductionPage = (props: SuperBlockProps) => {
   const { t } = useTranslation();
@@ -125,27 +138,29 @@ const SuperBlockIntroductionPage = (props: SuperBlockProps) => {
     initializeExpandedState();
     props.tryToShowDonationModal();
 
-    setTimeout(() => {
-      configureAnchors({ offset: -40, scrollDuration: 400 });
-    }, 0);
+    handleHashChange();
 
-    return () => {
-      configureAnchors({ offset: -40, scrollDuration: 0 });
-    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const disabledBlocksFeature = useFeatureValue<string[]>(
+    'disabled_blocks',
+    []
+  );
+
   const {
     data: {
-      allChallengeNode: { nodes }
+      allChallengeNode: { nodes },
+      allSuperBlockStructure
     },
     isSignedIn,
     currentChallengeId,
     signInLoading,
     user,
-    pageContext: { superBlock, title, certification },
-    location,
-    user: { completedChallenges: allCompletedChallenges }
+    pageContext: { superBlock },
+    location
   } = props;
 
   const allChallenges = useMemo(
@@ -156,23 +171,23 @@ const SuperBlockIntroductionPage = (props: SuperBlockProps) => {
     () => allChallenges.filter(c => c.superBlock === superBlock),
     [allChallenges, superBlock]
   );
-  const blocks = uniq(superBlockChallenges.map(({ block }) => block));
-
   const completedChallenges = useMemo(
     () =>
-      allCompletedChallenges.filter(completedChallenge =>
+      (user?.completedChallenges ?? []).filter(completedChallenge =>
         superBlockChallenges.some(c => c.id === completedChallenge.id)
       ),
-    [superBlockChallenges, allCompletedChallenges]
+    [superBlockChallenges, user?.completedChallenges]
   );
 
-  const i18nTitle = getSuperBlockTitleForMap(superBlock);
+  const i18nTitle = i18next.t(`intro:${superBlock}.title`);
+
+  const currentSuperBlockStructure = allSuperBlockStructure.nodes.find(
+    node => node.superBlock === superBlock
+  );
 
   const showCertification = liveCerts.some(
     cert => superBlockToCertMap[superBlock] === cert.certSlug
   );
-
-  const superBlockWithAccordionView = [SuperBlocks.FullStackDeveloper];
 
   const getInitiallyExpandedBlock = (): string => {
     // if coming from breadcrumb click
@@ -215,7 +230,9 @@ const SuperBlockIntroductionPage = (props: SuperBlockProps) => {
       }
     }
 
-    return blocks[0];
+    const fallbackBlock = superBlockChallenges[0]?.block;
+
+    return fallbackBlock ?? '';
   };
 
   const initializeExpandedState = () => {
@@ -234,6 +251,34 @@ const SuperBlockIntroductionPage = (props: SuperBlockProps) => {
     });
   };
 
+  const hasNotstarted = completedChallenges.length === 0;
+  const nextChallengeSlug = useMemo(() => {
+    if (hasNotstarted) return superBlockChallenges[0]?.fields.slug || null;
+    const lastCompletedChallenge = completedChallenges.reduce<
+      (typeof completedChallenges)[number] | null
+    >((latest, challenge) => {
+      if (!challenge?.completedDate) return latest;
+      if (
+        !latest?.completedDate ||
+        challenge.completedDate > latest.completedDate
+      ) {
+        return challenge;
+      }
+      return latest;
+    }, null);
+
+    const nextChallenge = () => {
+      if (!lastCompletedChallenge?.id) return null;
+      const lastCompletedIndex = superBlockChallenges.findIndex(
+        ({ id }) => id === lastCompletedChallenge?.id
+      );
+      if (lastCompletedIndex === -1) return null;
+      return superBlockChallenges[lastCompletedIndex + 1] ?? null;
+    };
+
+    return nextChallenge()?.fields.slug || null;
+  }, [completedChallenges, superBlockChallenges, hasNotstarted]);
+
   return (
     <>
       <Helmet>
@@ -250,49 +295,30 @@ const SuperBlockIntroductionPage = (props: SuperBlockProps) => {
                 onCertificationDonationAlertClick={
                   onCertificationDonationAlertClick
                 }
-                isDonating={user.isDonating}
+                isDonating={user?.isDonating ?? false}
+                hasNotstarted={hasNotstarted}
+                nextChallengeSlug={nextChallengeSlug}
               />
               <HelpTranslate superBlock={superBlock} />
               <Spacer size='l' />
               <h2 className='text-center big-subheading'>
-                {t(`intro:misc-text.courses`)}
+                {certificationCollectionSuperBlocks.includes(superBlock)
+                  ? t(`intro:misc-text.requirements`)
+                  : t(`intro:misc-text.courses`)}
               </h2>
               <Spacer size='m' />
-              {superBlockWithAccordionView.includes(superBlock) ? (
-                <SuperBlockAccordion
-                  challenges={superBlockChallenges}
-                  superBlock={superBlock}
-                  chosenBlock={initialExpandedBlock}
-                  completedChallengeIds={completedChallenges.map(c => c.id)}
-                />
-              ) : (
-                <div className='block-ui'>
-                  {blocks.map(block => {
-                    const blockChallenges = superBlockChallenges.filter(
-                      c => c.block === block
-                    );
-                    const blockType = blockChallenges[0].blockType;
-
-                    return (
-                      <Block
-                        key={block}
-                        block={block}
-                        blockType={blockType}
-                        challenges={blockChallenges}
-                        superBlock={superBlock}
-                      />
-                    );
-                  })}
-                  {showCertification && (
-                    <CertChallenge
-                      certification={certification}
-                      superBlock={superBlock}
-                      title={title}
-                      user={user}
-                    />
-                  )}
-                </div>
-              )}
+              <SuperBlockMap
+                completedChallengeIds={completedChallenges.map(c => c.id)}
+                disabledBlocks={disabledBlocksFeature}
+                initialExpandedBlock={initialExpandedBlock}
+                showCertification={showCertification}
+                structure={
+                  currentSuperBlockStructure as ChapterBasedSuperBlockStructure
+                }
+                superBlock={superBlock}
+                superBlockChallenges={superBlockChallenges}
+                user={user}
+              />
               {!isSignedIn && !signInLoading && (
                 <>
                   <Spacer size='l' />
@@ -328,23 +354,20 @@ export default connect(
 export const query = graphql`
   query SuperBlockIntroPageQuery {
     allChallengeNode(
-      sort: {
-        fields: [
-          challenge___superOrder
-          challenge___order
-          challenge___challengeOrder
-        ]
-      }
+      sort: [
+        { challenge: { superOrder: ASC } }
+        { challenge: { order: ASC } }
+        { challenge: { challengeOrder: ASC } }
+      ]
     ) {
       nodes {
         challenge {
           fields {
             slug
-            blockName
           }
           id
           block
-          blockType
+          blockLabel
           challengeType
           title
           order
@@ -353,6 +376,21 @@ export const query = graphql`
           blockLayout
           chapter
           module
+        }
+      }
+    }
+    allSuperBlockStructure {
+      nodes {
+        superBlock
+        chapters {
+          dashedName
+          comingSoon
+          modules {
+            dashedName
+            comingSoon
+            moduleType
+            blocks
+          }
         }
       }
     }

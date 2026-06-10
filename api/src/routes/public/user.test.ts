@@ -1,22 +1,32 @@
 import type { Prisma } from '@prisma/client';
-import { ObjectId } from 'mongodb';
-import _ from 'lodash';
+import { ObjectId } from 'bson';
+import { omit } from 'lodash-es';
+import {
+  describe,
+  it,
+  test,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterAll,
+  vi
+} from 'vitest';
 
-import { createUserInput } from '../../utils/create-user';
+import { createUserInput } from '../../utils/create-user.js';
 import {
   defaultUserEmail,
   setupServer,
   createSuperRequest
-} from '../../../jest.utils';
-import { getMsTranscriptApiUrl } from '../protected/user';
-import { replacePrivateData } from './user';
+} from '../../../vitest.utils.js';
+import { replacePrivateData } from './user.js';
 
-const mockedFetch = jest.fn();
-jest.spyOn(globalThis, 'fetch').mockImplementation(mockedFetch);
+const mockedFetch = vi.fn();
+vi.spyOn(globalThis, 'fetch').mockImplementation(mockedFetch);
 
 // This is used to build a test user.
 const testUserData: Prisma.userCreateInput = {
   ...createUserInput(defaultUserEmail),
+  sendQuincyEmail: true,
   username: 'foobar',
   usernameDisplay: 'Foo Bar',
   progressTimestamps: [1520002973119, 1520440323273],
@@ -64,6 +74,16 @@ const testUserData: Prisma.userCreateInput = {
       }
     }
   ],
+  experience: [
+    {
+      id: 'exp1',
+      title: 'Software Engineer',
+      company: 'Company A',
+      startDate: '2020-01-01',
+      endDate: '2021-01-01',
+      description: 'Worked on various projects.'
+    }
+  ],
   partiallyCompletedChallenges: [{ id: '123', completedDate: 123 }],
   completedExams: [],
   githubProfile: 'github.com/foobar',
@@ -95,6 +115,7 @@ const testUserData: Prisma.userCreateInput = {
   ],
   yearsTopContributor: ['2018'],
   twitter: '@foobar',
+  bluesky: '@foobar',
   linkedin: 'linkedin.com/foobar'
 };
 
@@ -116,6 +137,7 @@ const lockedProfileUI = {
   showAbout: false,
   showCerts: false,
   showDonation: false,
+  showExperience: false,
   showHeatMap: false,
   showLocation: false,
   showName: false,
@@ -173,9 +195,12 @@ const publicUserData = {
   ],
   completedExams: testUserData.completedExams,
   completedSurveys: [], // TODO: add surveys
+  experience: testUserData.experience,
   githubProfile: testUserData.githubProfile,
   is2018DataVisCert: testUserData.is2018DataVisCert,
   is2018FullStackCert: testUserData.is2018FullStackCert, // TODO: should this be returned? The client doesn't use it at the moment.
+  isA2EnglishCert: testUserData.isA2EnglishCert,
+  isB1EnglishCert: testUserData.isB1EnglishCert,
   isApisMicroservicesCert: testUserData.isApisMicroservicesCert,
   isBackEndCert: testUserData.isBackEndCert,
   isCheater: testUserData.isCheater,
@@ -187,27 +212,31 @@ const publicUserData = {
   isFrontEndCert: testUserData.isFrontEndCert,
   isFrontEndLibsCert: testUserData.isFrontEndLibsCert,
   isFullStackCert: testUserData.isFullStackCert,
+  isJavascriptCertV9: testUserData.isJavascriptCertV9,
   isHonest: testUserData.isHonest,
   isInfosecCertV7: testUserData.isInfosecCertV7,
   isInfosecQaCert: testUserData.isInfosecQaCert,
   isJsAlgoDataStructCert: testUserData.isJsAlgoDataStructCert,
   isJsAlgoDataStructCertV8: testUserData.isJsAlgoDataStructCertV8,
   isMachineLearningPyCertV7: testUserData.isMachineLearningPyCertV7,
+  isPythonCertV9: testUserData.isPythonCertV9,
   isQaCertV7: testUserData.isQaCertV7,
   isRelationalDatabaseCertV8: testUserData.isRelationalDatabaseCertV8,
+  isRelationalDatabaseCertV9: testUserData.isRelationalDatabaseCertV9,
   isRespWebDesignCert: testUserData.isRespWebDesignCert,
+  isRespWebDesignCertV9: testUserData.isRespWebDesignCertV9,
   isSciCompPyCertV7: testUserData.isSciCompPyCertV7,
   linkedin: testUserData.linkedin,
   location: testUserData.location,
   name: testUserData.name,
-  partiallyCompletedChallenges: [{ id: '123', completedDate: 123 }],
   picture: testUserData.picture,
   points: 2,
   portfolio: testUserData.portfolio,
   profileUI: testUserData.profileUI,
-  savedChallenges: testUserData.savedChallenges,
-  twitter: 'https://twitter.com/foobar',
-  username: testUserData.usernameDisplay, // It defaults to usernameDisplay
+  twitter: 'https://x.com/foobar',
+  bluesky: 'https://bsky.app/profile/foobar',
+  username: testUserData.username,
+  usernameDisplay: testUserData.usernameDisplay,
   website: testUserData.website,
   yearsTopContributor: testUserData.yearsTopContributor
 };
@@ -222,20 +251,29 @@ describe('userRoutes', () => {
       superGet = createSuperRequest({ method: 'GET' });
     });
 
-    describe('/api/users/get-public-profile', () => {
+    describe('/users/get-public-profile', () => {
       const profilelessUsername = 'profileless-user';
       const lockedUsername = 'locked-user';
       const publicUsername = 'public-user';
       const lockedUserProfileUI = {
         isLocked: true,
         showAbout: true,
-        showPortfolio: false
+        showCerts: true,
+        showDonation: true,
+        showExperience: true,
+        showHeatMap: true,
+        showLocation: true,
+        showName: true,
+        showPoints: true,
+        showPortfolio: true,
+        showTimeLine: true
       };
       const unlockedUserProfileUI = {
         isLocked: false,
         showAbout: true,
         showCerts: true,
         showDonation: true,
+        showExperience: true,
         showHeatMap: true,
         showLocation: true,
         showName: true,
@@ -281,7 +319,7 @@ describe('userRoutes', () => {
       describe('GET', () => {
         test('returns 400 status code if the user agent is blocked', async () => {
           const response = await superGet(
-            '/api/users/get-public-profile?username=public-user'
+            '/users/get-public-profile?username=public-user'
           ).set('User-Agent', 'curl');
 
           expect(response.text).toBe(
@@ -291,14 +329,14 @@ describe('userRoutes', () => {
         });
 
         test('returns 400 status code if the username param is missing', async () => {
-          const res = await superGet('/api/users/get-public-profile');
+          const res = await superGet('/users/get-public-profile');
           // TODO(Post-MVP): return something more informative
           expect(res.body).toStrictEqual({});
           expect(res.statusCode).toBe(400);
         });
 
         test('returns 400 status code if the username param is empty', async () => {
-          const res = await superGet('/api/users/get-public-profile?username=');
+          const res = await superGet('/users/get-public-profile?username=');
           // TODO(Post-MVP): return something more informative
           expect(res.body).toStrictEqual({});
           expect(res.statusCode).toBe(400);
@@ -306,7 +344,7 @@ describe('userRoutes', () => {
 
         test('returns 404 status code for non-existent user', async () => {
           const response = await superGet(
-            '/api/users/get-public-profile?username=non-existent'
+            '/users/get-public-profile?username=non-existent'
           );
           // TODO(Post-MVP): return something more informative
           expect(response.body).toStrictEqual({});
@@ -315,7 +353,7 @@ describe('userRoutes', () => {
 
         test('returns 200 status code with a locked profile if the profile is private', async () => {
           const response = await superGet(
-            `/api/users/get-public-profile?username=${lockedUsername}`
+            `/users/get-public-profile?username=${lockedUsername}`
           );
 
           expect(response.body).toStrictEqual({
@@ -335,7 +373,7 @@ describe('userRoutes', () => {
 
         test('returns 200 status code locked profile if the profile is missing', async () => {
           const response = await superGet(
-            `/api/users/get-public-profile?username=${profilelessUsername}`
+            `/users/get-public-profile?username=${profilelessUsername}`
           );
 
           expect(response.body).toStrictEqual({
@@ -353,21 +391,21 @@ describe('userRoutes', () => {
           expect(response.statusCode).toBe(200);
         });
         // TODO: create a list of public properties like the api-server and use that
-        // to restrict the output of this and get-session-user.
+        // to restrict the output of this and session-user.
         test('returns 200 status code with public user object', async () => {
           const testUser =
             await fastifyTestInstance.prisma.user.findFirstOrThrow({
               where: { email: publicUsername }
             });
           const response = await superGet(
-            `/api/users/get-public-profile?username=${publicUsername}`
+            `/users/get-public-profile?username=${publicUsername}`
           );
 
           // TODO: create a fixture for this without 'completedSurveys', ideally
           // it should contain the entire body.
           const publicUser = {
             // TODO(Post-MVP, maybe): return completedSurveys?
-            ..._.omit(publicUserData, 'completedSurveys'),
+            ...omit(publicUserData, 'completedSurveys'),
             username: publicUsername,
             joinDate: new ObjectId(testUser.id).getTimestamp().toISOString(),
             profileUI: unlockedUserProfileUI
@@ -385,83 +423,61 @@ describe('userRoutes', () => {
         });
       });
     });
-    describe('GET /api/users/exists', () => {
+    describe('GET /users/exists', () => {
       beforeAll(async () => {
         await fastifyTestInstance.prisma.user.create({
           data: minimalUserData
         });
       });
 
-      it('should return { exists: true } with a 400 status code if the username param is missing or empty', async () => {
-        const res = await superGet('/api/users/exists');
+      it('should reject with a 400 status code if the username param is missing or empty', async () => {
+        const res = await superGet('/users/exists');
 
-        expect(res.body).toStrictEqual({ exists: true });
+        expect(res.body).toStrictEqual({
+          type: 'danger',
+          message: 'username parameter is required'
+        });
         expect(res.statusCode).toBe(400);
 
-        const res2 = await superGet('/api/users/exists?username=');
+        const res2 = await superGet('/users/exists?username=');
 
-        expect(res2.body).toStrictEqual({ exists: true });
+        expect(res2.body).toStrictEqual({
+          type: 'danger',
+          message: 'username parameter is required'
+        });
         expect(res2.statusCode).toBe(400);
       });
 
       it('should return { exists: true } if the username exists', async () => {
-        const res = await superGet('/api/users/exists?username=testuser');
+        const res = await superGet('/users/exists?username=testuser');
 
         expect(res.body).toStrictEqual({ exists: true });
         expect(res.statusCode).toBe(200);
       });
 
       it('should ignore case when checking for username existence', async () => {
-        const res = await superGet('/api/users/exists?username=TeStUsEr');
+        const res = await superGet('/users/exists?username=TeStUsEr');
 
         expect(res.body).toStrictEqual({ exists: true });
         expect(res.statusCode).toBe(200);
       });
 
       it('should return { exists: false } if the username does not exist', async () => {
-        const res = await superGet('/api/users/exists?username=nonexistent');
+        const res = await superGet('/users/exists?username=nonexistent');
 
         expect(res.body).toStrictEqual({ exists: false });
         expect(res.statusCode).toBe(200);
       });
 
       it('should return { exists: true } if the username is restricted (ignoring case)', async () => {
-        const res = await superGet('/api/users/exists?username=pRofIle');
+        const res = await superGet('/users/exists?username=pRofIle');
 
         expect(res.body).toStrictEqual({ exists: true });
 
-        const res2 = await superGet('/api/users/exists?username=flAnge');
+        const res2 = await superGet('/users/exists?username=flAnge');
 
         expect(res2.body).toStrictEqual({ exists: true });
       });
-    });
-  });
-});
-
-describe('Microsoft helpers', () => {
-  describe('getMsTranscriptApiUrl', () => {
-    const expectedUrl =
-      'https://learn.microsoft.com/api/profiles/transcript/share/8u6awert43q1plo';
-
-    const urlWithoutSlash =
-      'https://learn.microsoft.com/en-us/users/mot01/transcript/8u6awert43q1plo';
-    const urlWithSlash = `${urlWithoutSlash}/`;
-    const urlWithQueryParams = `${urlWithoutSlash}?foo=bar`;
-    const urlWithQueryParamsAndSlash = `${urlWithSlash}?foo=bar`;
-
-    it('should extract the transcript id from the url', () => {
-      expect(getMsTranscriptApiUrl(urlWithoutSlash)).toBe(expectedUrl);
-    });
-
-    it('should handle trailing slashes', () => {
-      expect(getMsTranscriptApiUrl(urlWithSlash)).toBe(expectedUrl);
-    });
-
-    it('should ignore query params', () => {
-      expect(getMsTranscriptApiUrl(urlWithQueryParams)).toBe(expectedUrl);
-      expect(getMsTranscriptApiUrl(urlWithQueryParamsAndSlash)).toBe(
-        expectedUrl
-      );
     });
   });
 });
@@ -490,6 +506,17 @@ describe('get-public-profile helpers', () => {
           description: 'description'
         }
       ],
+      experience: [
+        {
+          id: 'exp1',
+          title: 'Developer',
+          company: 'Company',
+          location: 'Location',
+          startDate: '01/2020',
+          endDate: '12/2022',
+          description: 'Description'
+        }
+      ],
       profileUI: {
         isLocked: false,
         showAbout: true,
@@ -500,7 +527,8 @@ describe('get-public-profile helpers', () => {
         showName: true,
         showPoints: true,
         showPortfolio: true,
-        showTimeLine: true
+        showTimeLine: true,
+        showExperience: true
       }
     };
 
@@ -602,10 +630,18 @@ describe('get-public-profile helpers', () => {
       });
     });
 
+    test('returns [] for experience if showExperience is not true', () => {
+      const userWithoutExperience = {
+        ...user,
+        profileUI: { ...user.profileUI, showExperience: false }
+      };
+      expect(replacePrivateData(userWithoutExperience)).toMatchObject({
+        experience: []
+      });
+    });
+
     test('returns the expected public user object if all showX flags are true', () => {
-      expect(replacePrivateData(user)).toEqual(
-        _.omit(user, ['id', 'profileUI'])
-      );
+      expect(replacePrivateData(user)).toEqual(omit(user, ['id', 'profileUI']));
     });
   });
 });

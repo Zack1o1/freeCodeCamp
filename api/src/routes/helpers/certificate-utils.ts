@@ -1,24 +1,18 @@
+import { Prisma } from '@prisma/client';
 import {
   certSlugTypeMap,
-  certIds
-} from '../../../../shared/config/certification-settings';
-
-const {
-  legacyInfosecQaId,
-  respWebDesignId,
-  frontEndDevLibsId,
-  jsAlgoDataStructId,
-  dataVis2018Id,
-  apisMicroservicesId
-} = certIds;
+  certToIdMap,
+  Certification
+} from '@freecodecamp/shared/config/certification-settings';
+import { normalizeDate } from '../../utils/normalize.js';
 
 const fullStackCertificateIds = [
-  respWebDesignId,
-  jsAlgoDataStructId,
-  frontEndDevLibsId,
-  dataVis2018Id,
-  apisMicroservicesId,
-  legacyInfosecQaId
+  certToIdMap[Certification.RespWebDesign],
+  certToIdMap[Certification.JsAlgoDataStruct],
+  certToIdMap[Certification.FrontEndDevLibs],
+  certToIdMap[Certification.DataVis],
+  certToIdMap[Certification.BackEndDevApis],
+  certToIdMap[Certification.LegacyInfoSecQa]
 ];
 
 /**
@@ -27,9 +21,7 @@ const fullStackCertificateIds = [
  * @param certSlug - The certification slug to check.
  * @returns True if the certification slug is known, otherwise false.
  */
-export function isKnownCertSlug(
-  certSlug: string
-): certSlug is keyof typeof certSlugTypeMap {
+export function isKnownCertSlug(certSlug: string): certSlug is Certification {
   return certSlug in certSlugTypeMap;
 }
 
@@ -41,12 +33,16 @@ export function isKnownCertSlug(
  * @returns The latest certification date or the completed date if no certification is found.
  */
 export function getFallbackFullStackDate(
-  completedChallenges: { id: string; completedDate: number }[],
-  completedDate: number
-) {
+  completedChallenges: { id: string; completedDate: Prisma.JsonValue }[],
+  completedDate: Prisma.JsonValue
+): number {
   const latestCertDate = completedChallenges
     .filter(chal => fullStackCertificateIds.includes(chal.id))
+    .map(chal => ({
+      ...chal,
+      completedDate: normalizeDate(chal.completedDate)
+    }))
     .sort((a, b) => b.completedDate - a.completedDate)[0]?.completedDate;
 
-  return latestCertDate ?? completedDate;
+  return latestCertDate ?? normalizeDate(completedDate);
 }

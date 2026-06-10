@@ -1,18 +1,8 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import CalendarHeatMap from 'react-calendar-heatmap';
-// TODO: Check if we can import { addDays, addMonths ... } from 'date-fns'
-// without bundling all of the package then we can remove the disable-next-line
-// comments.
 
-// eslint-disable-next-line import/no-duplicates
-import addDays from 'date-fns/addDays';
-// eslint-disable-next-line import/no-duplicates
-import addMonths from 'date-fns/addMonths';
-// eslint-disable-next-line import/no-duplicates
-import isEqual from 'date-fns/isEqual';
-// eslint-disable-next-line import/no-duplicates
-import startOfDay from 'date-fns/startOfDay';
+import { addDays, addMonths, isEqual, startOfDay } from 'date-fns';
 import React, { Component } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -22,10 +12,8 @@ import { Row, Spacer } from '@freecodecamp/ui';
 import 'react-calendar-heatmap/dist/styles.css';
 import './heatmap.css';
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
 import envData from '../../../../config/env.json';
-import { getLangCode } from '../../../../../shared/config/i18n';
+import { getLangCode } from '@freecodecamp/shared/config/i18n';
 import { User } from '../../../redux/prop-types';
 import FullWidthRow from '../../helpers/full-width-row';
 
@@ -35,6 +23,7 @@ const localeCode = getLangCode(clientLocale);
 
 interface HeatMapProps {
   calendar: User['calendar'];
+  isPrivate?: boolean;
 }
 
 interface PageData {
@@ -49,6 +38,7 @@ interface CalendarData {
 
 interface HeatMapInnerProps {
   calendarData: CalendarData[];
+  isPrivate?: boolean;
   pages: PageData[];
   points?: number;
   t: TFunction;
@@ -105,7 +95,14 @@ class HeatMapInner extends Component<HeatMapInnerProps, HeatMapInnerState> {
     return (
       <FullWidthRow>
         <section className='card'>
-          <h2>{t('profile.activity')}</h2>
+          <div className='profile-section-heading'>
+            <h2>{t('profile.activity')}</h2>
+            {this.props.isPrivate && (
+              <span className='profile-private-badge'>
+                {t('buttons.private')}
+              </span>
+            )}
+          </div>
           <Spacer size='m' />
 
           <CalendarHeatMap
@@ -146,6 +143,7 @@ class HeatMapInner extends Component<HeatMapInnerProps, HeatMapInnerState> {
           />
           <ReactTooltip className='react-tooltip' effect='solid' html={true} />
           <Row className='text-center'>
+            <Spacer size='xs' />
             <button
               className='heatmap-nav-btn'
               disabled={!pages[this.state.pageIndex - 1]}
@@ -154,6 +152,7 @@ class HeatMapInner extends Component<HeatMapInnerProps, HeatMapInnerState> {
               style={{
                 visibility: pages[this.state.pageIndex - 1] ? 'unset' : 'hidden'
               }}
+              aria-label={t('aria.previous-page')}
             >
               &lt;
             </button>
@@ -166,11 +165,12 @@ class HeatMapInner extends Component<HeatMapInnerProps, HeatMapInnerState> {
               style={{
                 visibility: pages[this.state.pageIndex + 1] ? 'unset' : 'hidden'
               }}
+              aria-label={t('aria.next-page')}
             >
               &gt;
             </button>
           </Row>
-          <Spacer size='m' />
+          <Spacer size='xs' />
         </section>
       </FullWidthRow>
     );
@@ -179,7 +179,7 @@ class HeatMapInner extends Component<HeatMapInnerProps, HeatMapInnerState> {
 
 const HeatMap = (props: HeatMapProps): JSX.Element => {
   const { t } = useTranslation();
-  const { calendar } = props;
+  const { calendar, isPrivate } = props;
 
   /**
    *  the following logic creates the data for the heatmap
@@ -239,7 +239,14 @@ const HeatMap = (props: HeatMapProps): JSX.Element => {
     }
   });
 
-  return <HeatMapInner calendarData={calendarData} pages={pages} t={t} />;
+  return (
+    <HeatMapInner
+      calendarData={calendarData}
+      isPrivate={isPrivate}
+      pages={pages}
+      t={t}
+    />
+  );
 };
 
 HeatMap.displayName = 'HeatMap';

@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { transformEditorLink } from '../utils';
 import { insertEditableRegions } from './create-question-epic';
 
@@ -87,6 +88,36 @@ describe('create-question-epic', () => {
       expect(() =>
         insertEditableRegions(multiCertChallengeFiles)
       ).not.toThrow();
+    });
+    it.each([
+      ['html', '<!-- User Editable Region -->'],
+      ['css', '/* User Editable Region */'],
+      ['py', '# User Editable Region'],
+      ['js', '// User Editable Region'],
+      ['ts', '// User Editable Region'],
+      ['jsx', '{/* User Editable Region */}'],
+      ['tsx', '{/* User Editable Region */}'],
+      ['unknown', 'User Editable Region']
+    ])('should insert correct comment syntax for %s files', (ext, comment) => {
+      const challengeFiles = [
+        {
+          contents: 'line1\nline2\nline3\nline4',
+          editableRegionBoundaries: [1, 3],
+          ext,
+          fileKey: `file-${ext}`,
+          history: [`index.${ext}`],
+          head: '',
+          id: '',
+          name: 'index',
+          path: `index.${ext}`,
+          seed: 'line1\nline2\nline3\nline4',
+          tail: ''
+        }
+      ];
+
+      const result = insertEditableRegions(challengeFiles);
+
+      expect(result[0].contents).toContain(comment);
     });
   });
 });

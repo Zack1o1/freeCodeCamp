@@ -11,7 +11,7 @@ import {
 
 type ResetModalProps = {
   onHide: () => void;
-  reset: () => void;
+  reset: (x?: never) => void;
   show: boolean;
 };
 
@@ -66,13 +66,12 @@ function ResetModal(props: ResetModalProps): JSX.Element {
           />
         </FormGroup>
         <Spacer size='xs' />
-        {/* @ts-expect-error freecodecamp/ui doesn't allow disable to be false: https://github.com/freeCodeCamp/ui/issues/473 */}
         <Button
           block={true}
           size='large'
           variant='danger'
           disabled={verifyText !== t('settings.danger.verify-reset-text')}
-          onClick={props.reset}
+          onClick={() => props.reset()}
           type='button'
         >
           {t('settings.danger.reset-confirm')}

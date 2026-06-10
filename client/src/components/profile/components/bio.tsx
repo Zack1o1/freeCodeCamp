@@ -8,25 +8,34 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Button, Spacer } from '@freecodecamp/ui';
 import { AvatarRenderer, FullWidthRow } from '../../helpers';
+import { User } from '../../../redux/prop-types';
 import { parseDate } from './utils';
 import SocialIcons from './social-icons';
-import { type CamperProps } from './camper';
-const Bio = ({
-  joinDate,
-  location,
-  username,
-  name,
-  about,
-  githubProfile,
-  linkedin,
-  twitter,
-  website,
-  isDonating,
-  yearsTopContributor,
-  picture,
-  setIsEditing,
-  isSessionUser
-}: CamperProps) => {
+
+type BioProps = {
+  user: User;
+  setIsEditing: (value: boolean) => void;
+  isSessionUser: boolean;
+};
+
+const Bio = ({ user, setIsEditing, isSessionUser }: BioProps) => {
+  const {
+    joinDate,
+    location,
+    username,
+    name,
+    about,
+    githubProfile,
+    linkedin,
+    twitter,
+    bluesky,
+    website,
+    isDonating,
+    yearsTopContributor,
+    picture,
+    profileUI: { showAbout, showLocation, showDonation }
+  } = user;
+
   const { t } = useTranslation();
 
   const isTopContributor =
@@ -38,7 +47,7 @@ const Bio = ({
       <section className='card card-header'>
         <div className='avatar-camper'>
           <AvatarRenderer
-            isDonating={isDonating}
+            isDonating={isDonating && showDonation}
             isTopContributor={isTopContributor}
             picture={picture}
           />
@@ -56,17 +65,17 @@ const Bio = ({
             </Button>
           )}
         </div>
-        {name && <h2>{name}</h2>}
+        {name && showAbout && <h2>{name}</h2>}
         <Spacer size={'s'} />
-        {about && <p>{about}</p>}
+        {showAbout && <p>{about}</p>}
         <div className='profile-meta-container'>
-          {joinDate && (
+          {joinDate && showAbout && (
             <div>
               <FontAwesomeIcon icon={faCalendar} />
               <span>{parseDate(joinDate, t)}</span>
             </div>
           )}
-          {location && (
+          {location && showLocation && (
             <div>
               <FontAwesomeIcon icon={faLocationDot} />
               <span>{t('profile.from', { location })}</span>
@@ -77,6 +86,7 @@ const Bio = ({
           githubProfile={githubProfile}
           linkedin={linkedin}
           twitter={twitter}
+          bluesky={bluesky}
           username={username}
           website={website}
         />

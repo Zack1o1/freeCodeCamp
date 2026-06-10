@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import type { Prisma } from '@prisma/client';
-import { setupServer, superRequest } from '../../../jest.utils';
-import { HOME_LOCATION } from '../../utils/env';
-import { createUserInput } from '../../utils/create-user';
+import { describe, test, expect } from 'vitest';
+import { setupServer, superRequest } from '../../../vitest.utils.js';
+import { HOME_LOCATION } from '../../utils/env.js';
+import { createUserInput } from '../../utils/create-user.js';
 
 const urlEncodedInfoMessage1 =
   '?messages=info%5B0%5D%3DWe%2520could%2520not%2520find%2520an%2520account%2520to%2520unsubscribe.';
@@ -100,13 +101,22 @@ describe('Email Subscription endpoints', () => {
       });
 
       expect(users).toHaveLength(4);
-      users.forEach(user => {
-        if (['user1@freecodecamp.org'].includes(user.email)) {
-          expect(user.sendQuincyEmail).toBe(false);
-        } else {
-          expect(user.sendQuincyEmail).toBe(true);
-        }
-      });
+      const unsubscribedUsers = users.filter(
+        user => user.email === 'user1@freecodecamp.org'
+      );
+      const remainingUsers = users.filter(
+        user => user.email !== 'user1@freecodecamp.org'
+      );
+
+      expect(unsubscribedUsers).toHaveLength(2);
+      expect(
+        unsubscribedUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([false, false]);
+
+      expect(remainingUsers).toHaveLength(2);
+      expect(
+        remainingUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([true, true]);
 
       expect(response.headers.location).toStrictEqual(
         `${HOME_LOCATION}/unsubscribed/${unsubscribeId1}${urlEncodedSuccessMessage1}`
@@ -145,17 +155,27 @@ describe('Email Subscription endpoints', () => {
       });
 
       expect(users).toHaveLength(4);
-      users.forEach(user => {
-        if (
-          ['user1@freecodecamp.org', 'user2@freecodecamp.org'].includes(
-            user.email
+      const unsubscribedUsers = users.filter(user =>
+        ['user1@freecodecamp.org', 'user2@freecodecamp.org'].includes(
+          user.email!
+        )
+      );
+      const remainingUsers = users.filter(
+        user =>
+          !['user1@freecodecamp.org', 'user2@freecodecamp.org'].includes(
+            user.email!
           )
-        ) {
-          expect(user.sendQuincyEmail).toBe(false);
-        } else {
-          expect(user.sendQuincyEmail).toBe(true);
-        }
-      });
+      );
+
+      expect(unsubscribedUsers).toHaveLength(3);
+      expect(
+        unsubscribedUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([false, false, false]);
+
+      expect(remainingUsers).toHaveLength(1);
+      expect(
+        remainingUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([true]);
 
       expect(response.headers.location).toStrictEqual(
         `${HOME_LOCATION}/unsubscribed/${unsubscribeId2}${urlEncodedSuccessMessage1}`
@@ -213,13 +233,22 @@ describe('Email Subscription endpoints', () => {
       });
 
       expect(users).toHaveLength(3);
-      users.forEach(user => {
-        if (user.unsubscribeId === unsubscribeId1) {
-          expect(user.sendQuincyEmail).toBe(true);
-        } else {
-          expect(user.sendQuincyEmail).toBe(false);
-        }
-      });
+      const resubscribedUsers = users.filter(
+        user => user.unsubscribeId === unsubscribeId1
+      );
+      const remainingUsers = users.filter(
+        user => user.unsubscribeId !== unsubscribeId1
+      );
+
+      expect(resubscribedUsers).toHaveLength(1);
+      expect(
+        resubscribedUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([true]);
+
+      expect(remainingUsers).toHaveLength(2);
+      expect(
+        remainingUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([false, false]);
 
       expect(response.headers.location).toStrictEqual(
         `${HOME_LOCATION}${urlEncodedSuccessMessage2}`
@@ -255,13 +284,22 @@ describe('Email Subscription endpoints', () => {
       });
 
       expect(users).toHaveLength(3);
-      users.forEach(user => {
-        if (user.email === 'user2@freecodecamp.org') {
-          expect(user.sendQuincyEmail).toBe(true);
-        } else {
-          expect(user.sendQuincyEmail).toBe(false);
-        }
-      });
+      const resubscribedUsers = users.filter(
+        user => user.email === 'user2@freecodecamp.org'
+      );
+      const remainingUsers = users.filter(
+        user => user.email !== 'user2@freecodecamp.org'
+      );
+
+      expect(resubscribedUsers).toHaveLength(1);
+      expect(
+        resubscribedUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([true]);
+
+      expect(remainingUsers).toHaveLength(2);
+      expect(
+        remainingUsers.map(({ sendQuincyEmail }) => sendQuincyEmail)
+      ).toStrictEqual([false, false]);
 
       expect(response.headers.location).toStrictEqual(
         `${HOME_LOCATION}${urlEncodedSuccessMessage2}`

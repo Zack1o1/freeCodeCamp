@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { startOfDay, addDays, isEqual } from 'date-fns';
+import {
+  startOfDay,
+  addDays,
+  isEqual,
+  differenceInCalendarDays
+} from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { Spacer } from '@freecodecamp/ui';
 import { last } from 'lodash-es';
-import { uniq } from 'lodash';
+import { uniqBy } from 'lodash';
 
 import { FullWidthRow } from '../../helpers';
 
@@ -12,6 +17,7 @@ import './stats.css';
 interface StatsProps {
   points: number;
   calendar: Record<string, number>;
+  isPrivate?: boolean;
 }
 
 export const calculateStreaks = (calendar: Record<string, number>) => {
@@ -19,7 +25,10 @@ export const calculateStreaks = (calendar: Record<string, number>) => {
   const timestamps = Object.keys(calendar).map(
     stamp => Number.parseInt(stamp, 10) * 1000
   );
-  const days = uniq(timestamps.map(stamp => startOfDay(stamp)));
+  const days = uniqBy(
+    timestamps.map(stamp => startOfDay(stamp)),
+    day => day.getTime()
+  );
 
   const { longestStreak, currentStreak } = days.reduce(
     (acc, day) => {
@@ -39,12 +48,16 @@ export const calculateStreaks = (calendar: Record<string, number>) => {
   );
 
   const lastDay = last(days);
-  const streakExpired = !lastDay || !isEqual(lastDay, startOfDay(Date.now()));
+  const today = startOfDay(Date.now());
+
+  // Grace period: streak remains active if last activity was today or yesterday
+  const streakExpired =
+    !lastDay || differenceInCalendarDays(today, lastDay) > 1;
 
   return { longestStreak, currentStreak: streakExpired ? 0 : currentStreak };
 };
 
-function Stats({ points, calendar }: StatsProps): JSX.Element {
+function Stats({ points, calendar, isPrivate }: StatsProps): JSX.Element {
   const { t } = useTranslation();
 
   const [currentStreak, setCurrentStreak] = useState(0);
@@ -60,7 +73,14 @@ function Stats({ points, calendar }: StatsProps): JSX.Element {
   return (
     <FullWidthRow>
       <section className='card'>
-        <h2>{t('profile.stats')}</h2>
+        <div className='profile-section-heading'>
+          <h2>{t('profile.stats')}</h2>
+          {isPrivate && (
+            <span className='profile-private-badge'>
+              {t('buttons.private')}
+            </span>
+          )}
+        </div>
         <Spacer size='s' />
         <dl className='stats'>
           <div>
@@ -69,7 +89,7 @@ function Stats({ points, calendar }: StatsProps): JSX.Element {
             </dt>
             <dd>{currentStreak || 0}</dd>
           </div>
-          <div>
+          <div data-testid='total-points'>
             <dt>
               <b>{t('profile.total-points')}</b>
             </dt>

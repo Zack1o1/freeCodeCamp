@@ -1,14 +1,13 @@
-import { first } from 'lodash-es';
+import { isEmpty } from 'lodash-es';
 import React, { useState, useEffect, ReactElement } from 'react';
 import { ReflexContainer, ReflexSplitter, ReflexElement } from 'react-reflex';
 import { createSelector } from 'reselect';
 import { connect } from 'react-redux';
 import store from 'store';
-import { sortChallengeFiles } from '../../../../utils/sort-challengefiles';
-import { challengeTypes } from '../../../../../shared/config/challenge-types';
+import { challengeTypes } from '@freecodecamp/shared/config/challenge-types';
 import {
-  ChallengeFile,
   ChallengeFiles,
+  DailyCodingChallengeLanguages,
   ResizeProps
 } from '../../../redux/prop-types';
 import {
@@ -24,6 +23,7 @@ import {
 } from '../redux/selectors';
 import PreviewPortal from '../components/preview-portal';
 import Notes from '../components/notes';
+import IndependentLowerJaw from '../components/independent-lower-jaw';
 import ActionRow from './action-row';
 
 type Pane = { flex: number };
@@ -32,11 +32,16 @@ interface DesktopLayoutProps {
   challengeFiles: ChallengeFiles;
   challengeType: number;
   editor: ReactElement | null;
-  hasEditableBoundaries: boolean;
+  hasEditableBoundaries?: boolean;
   hasPreview: boolean;
   instructions: ReactElement;
   isAdvancing: boolean;
-  isFirstStep: boolean;
+  isDailyCodingChallenge: boolean;
+  dailyCodingChallengeLanguage: DailyCodingChallengeLanguages;
+  setDailyCodingChallengeLanguage: (
+    language: DailyCodingChallengeLanguages
+  ) => void;
+  isFirstStep?: boolean;
   layoutState: {
     codePane: Pane;
     editorPane: Pane;
@@ -45,7 +50,7 @@ interface DesktopLayoutProps {
     previewPane: Pane;
     testsPane: Pane;
   };
-  notes: string;
+  notes?: string;
   onPreviewResize: () => void;
   preview: ReactElement;
   resizeProps: ResizeProps;
@@ -58,6 +63,7 @@ interface DesktopLayoutProps {
   setShowPreviewPortal: (arg: boolean) => void;
   setShowPreviewPane: (arg: boolean) => void;
   portalWindow: null | Window;
+  showIndependentLowerJaw: boolean;
 }
 
 const reflexProps = {
@@ -97,7 +103,11 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
     setShowPreviewPane,
     setShowPreviewPortal,
     portalWindow,
-    startWithConsoleShown
+    startWithConsoleShown,
+    showIndependentLowerJaw,
+    isDailyCodingChallenge,
+    dailyCodingChallengeLanguage,
+    setDailyCodingChallengeLanguage
   } = props;
 
   const initialShowState = (key: string, defaultValue: boolean): boolean => {
@@ -204,12 +214,8 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
     }
   };
 
-  const getChallengeFile = () => {
-    const { challengeFiles } = props;
-    return first(sortChallengeFiles(challengeFiles) as ChallengeFile[]);
-  };
-
   const {
+    challengeFiles,
     challengeType,
     resizeProps,
     instructions,
@@ -235,13 +241,17 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
     }
   }, []);
 
-  const challengeFile = getChallengeFile();
   const projectBasedChallenge = hasEditableBoundaries;
+  const areInstructionsDisplayable =
+    !projectBasedChallenge || showIndependentLowerJaw;
   const isMultifileProject =
     challengeType === challengeTypes.multifileCertProject ||
     challengeType === challengeTypes.multifilePythonCertProject ||
     challengeType === challengeTypes.lab ||
-    challengeType === challengeTypes.jsLab;
+    challengeType === challengeTypes.jsLab ||
+    challengeType === challengeTypes.pyLab ||
+    challengeType === challengeTypes.dailyChallengeJs ||
+    challengeType === challengeTypes.dailyChallengePy;
   const isProjectStyle = projectBasedChallenge || isMultifileProject;
   const displayPreviewPane = hasPreview && showPreviewPane;
   const displayPreviewPortal = hasPreview && showPreviewPortal;
@@ -261,19 +271,29 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
   const editorPaneFlex =
     !displayPreviewConsole && !displayPreviewPane ? 1 : editorPane.flex;
 
+  const usesTerminal =
+    challengeType === challengeTypes.python ||
+    challengeType === challengeTypes.multifilePythonCertProject ||
+    challengeType === challengeTypes.pyLab ||
+    challengeType === challengeTypes.dailyChallengePy;
+
   return (
     <div className='desktop-layout' data-playwright-test-label='desktop-layout'>
       {isProjectStyle && (
         <ActionRow
           hasPreview={hasPreview}
           hasNotes={!!notes}
-          isProjectBasedChallenge={projectBasedChallenge}
+          areInstructionsDisplayable={areInstructionsDisplayable}
+          isDailyCodingChallenge={isDailyCodingChallenge}
+          dailyCodingChallengeLanguage={dailyCodingChallengeLanguage}
+          setDailyCodingChallengeLanguage={setDailyCodingChallengeLanguage}
           showConsole={showConsole}
           showNotes={showNotes}
           showInstructions={showInstructions}
           showPreviewPane={showPreviewPane}
           showPreviewPortal={showPreviewPortal}
           togglePane={togglePane}
+          usesTerminal={usesTerminal}
           data-playwright-test-label='action-row'
         />
       )}
@@ -281,7 +301,7 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
         orientation='vertical'
         data-playwright-test-label='main-container'
       >
-        {!projectBasedChallenge && showInstructions && (
+        {areInstructionsDisplayable && showInstructions && (
           <ReflexElement
             flex={instructionPane.flex}
             {...resizeProps}
@@ -291,7 +311,7 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
             {instructions}
           </ReflexElement>
         )}
-        {!projectBasedChallenge && showInstructions && (
+        {areInstructionsDisplayable && showInstructions && (
           <ReflexSplitter propagate={true} {...resizeProps} />
         )}
 
@@ -300,11 +320,13 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
           name='editorPane'
           {...resizeProps}
           data-playwright-test-label='editor-pane'
+          className='editor-pane'
         >
-          {challengeFile && (
+          {!isEmpty(challengeFiles) && (
             <ReflexContainer
-              key={challengeFile.fileKey}
+              key='codePane'
               orientation='horizontal'
+              className='editor-pane-code'
             >
               <ReflexElement
                 name='codePane'
@@ -328,6 +350,7 @@ const DesktopLayout = (props: DesktopLayoutProps): JSX.Element => {
               )}
             </ReflexContainer>
           )}
+          {showIndependentLowerJaw && <IndependentLowerJaw />}
         </ReflexElement>
         {displayNotes && <ReflexSplitter propagate={true} {...resizeProps} />}
         {displayNotes && (

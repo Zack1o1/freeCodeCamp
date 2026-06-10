@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Certification intro page', () => {
   test('Should render and toggle correctly', async ({ page }) => {
     const firstBlockToggle = page.getByRole('button', {
-      name: 'Learn HTML by Building a Cat Photo App'
+      name: /^Learn HTML by Building a Cat Photo App/
     });
 
     const firstBlockText = page.getByText(
@@ -21,7 +21,7 @@ test.describe('Certification intro page', () => {
     await page.goto('/learn/2022/responsive-web-design');
 
     await expect(page).toHaveTitle(
-      'Responsive Web Design Certification | freeCodeCamp.org'
+      'Legacy Responsive Web Design V8 | freeCodeCamp.org'
     );
     await expect(superBlockText).toBeVisible();
     await expect(firstBlockText).toBeVisible();

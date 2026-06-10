@@ -4,27 +4,45 @@ import translations from '../client/i18n/locales/english/translations.json';
 
 const certs = [
   {
-    name: 'Responsive Web Design',
+    name: 'Foundational C# with Microsoft',
+    url: '/certification/certifieduser/foundational-c-sharp-with-microsoft'
+  }
+];
+
+const betaCerts = [
+  {
+    name: 'A2 English for Developers',
+    url: '/certification/certifieduser/a2-english-for-developers'
+  },
+  {
+    name: 'B1 English for Developers',
+    url: '/certification/certifieduser/b1-english-for-developers'
+  }
+];
+
+const legacyCerts = [
+  {
+    name: 'Legacy Responsive Web Design V8',
     url: '/certification/certifieduser/responsive-web-design'
   },
   {
-    name: 'JavaScript Algorithms and Data Structures',
+    name: 'Legacy JavaScript Algorithms and Data Structures V8',
     url: '/certification/certifieduser/javascript-algorithms-and-data-structures-v8'
   },
   {
-    name: 'Front End Development Libraries',
+    name: 'Front-End Development Libraries V8',
     url: '/certification/certifieduser/front-end-development-libraries'
   },
   {
-    name: 'Data Visualization',
+    name: 'Data Visualization V8',
     url: '/certification/certifieduser/data-visualization'
   },
   {
-    name: 'Relational Database',
+    name: 'Relational Database V8',
     url: '/certification/certifieduser/relational-database-v8'
   },
   {
-    name: 'Back End Development and APIs',
+    name: 'Back-End Development and APIs V8',
     url: '/certification/certifieduser/back-end-development-and-apis'
   },
   {
@@ -52,22 +70,15 @@ const certs = [
     url: '/certification/certifieduser/college-algebra-with-python-v8'
   },
   {
-    name: 'Foundational C# with Microsoft',
-    url: '/certification/certifieduser/foundational-c-sharp-with-microsoft'
-  }
-];
-
-const legacyCerts = [
-  {
-    name: 'Legacy Front End',
+    name: 'Legacy Front-End',
     url: '/certification/certifieduser/legacy-front-end'
   },
   {
-    name: 'Legacy JavaScript Algorithms and Data Structures',
+    name: 'Legacy JavaScript Algorithms and Data Structures V7',
     url: '/certification/certifieduser/javascript-algorithms-and-data-structures'
   },
   {
-    name: 'Legacy Back End',
+    name: 'Legacy Back-End',
     url: '/certification/certifieduser/legacy-back-end'
   },
   {
@@ -78,20 +89,16 @@ const legacyCerts = [
     name: 'Legacy Information Security and Quality Assurance',
     url: '/certification/certifieduser/information-security-and-quality-assurance'
   },
-  { name: 'Legacy Full Stack', url: '/certification/certifieduser/full-stack' }
+  {
+    name: 'Legacy Full-Stack',
+    url: '/certification/certifieduser/full-stack'
+  }
 ];
 
 test.describe('Profile component', () => {
   test.describe('when viewing my own profile', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/certifieduser');
-
-      // If you build the client locally, delete the button click below.
-      if (!process.env.CI) {
-        await page
-          .getByRole('button', { name: 'Preview custom 404 page' })
-          .click();
-      }
     });
 
     test('renders the camper profile correctly', async ({ page }) => {
@@ -120,31 +127,6 @@ test.describe('Profile component', () => {
       ).toContain('Among most prolific volunteers');
     });
 
-    test('renders total points correctly', async ({ page }) => {
-      await expect(page.getByText('Total Points:')).toBeVisible();
-    });
-
-    // The date range computation in this test doesn't match the implementation code,
-    // and causes the test to fail in some cases.
-    // We would want to mock system time to keep the test stable,
-    // but Playwright currently doesn't offer a built-in mechanism for this.
-    // Ref: https://github.com/microsoft/playwright/issues/6347
-    test.skip('renders the heat map correctly', async ({ page }) => {
-      const today = new Date();
-      const currentMonth = today.toLocaleString('en-US', { month: 'short' });
-      const sixMonthsAgo = new Date(today.setMonth(today.getMonth() - 6));
-      const sixMonthsAgoMonth = sixMonthsAgo.toLocaleString('en-US', {
-        month: 'short'
-      });
-      const dateRange = `${sixMonthsAgoMonth} ${sixMonthsAgo.getFullYear()} - ${currentMonth} ${today.getFullYear()}`;
-
-      await expect(page.getByText(dateRange)).toBeVisible();
-      await expect(page.locator('.react-calendar-heatmap')).toBeVisible();
-      // Streak should be a non-negative integer
-      await expect(page.getByText(/Longest Streak: [0-9]\d*$/)).toBeVisible();
-      await expect(page.getByText(/Current Streak: [0-9]\d*$/)).toBeVisible();
-    });
-
     test('displays certifications correctly', async ({ page }) => {
       await expect(
         page.getByRole('heading', { name: 'freeCodeCamp Certifications' })
@@ -163,6 +145,16 @@ test.describe('Profile component', () => {
         await expect(link).toHaveAttribute('href', cert.url);
       }
 
+      for (const cert of betaCerts) {
+        const link = page
+          .getByRole('link', {
+            name: `View ${cert.name} Certification (Beta)`
+          })
+          .first();
+        await expect(link).toBeVisible();
+        await expect(link).toHaveAttribute('href', cert.url);
+      }
+
       for (const cert of legacyCerts) {
         const link = page
           .getByRole('link', {
@@ -174,11 +166,15 @@ test.describe('Profile component', () => {
       }
     });
 
-    test('should not show portfolio when empty', async ({ page }) => {
-      // @certifieduser doesn't have portfolio information
+    test('should show portfolio section with add button when empty', async ({
+      page
+    }) => {
+      // @certifieduser doesn't have portfolio information, but session users
+      // always see the section so they can add projects
+      await expect(page.getByText(translations.profile.projects)).toBeVisible();
       await expect(
-        page.getByText(translations.profile.projects)
-      ).not.toBeVisible();
+        page.getByRole('button', { name: translations.aria['add-portfolio'] })
+      ).toBeVisible();
     });
 
     test('displays the timeline correctly', async ({ page }) => {
@@ -195,13 +191,6 @@ test.describe('Profile component', () => {
   test.describe("when viewing someone else's profile", () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/publicUser');
-
-      // If you build the client locally, delete the button click below.
-      if (!process.env.CI) {
-        await page
-          .getByRole('button', { name: 'Preview custom 404 page' })
-          .click();
-      }
     });
 
     test.describe('while logged in', () => {

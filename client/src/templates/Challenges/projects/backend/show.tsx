@@ -49,7 +49,7 @@ const mapStateToProps = createSelector(
   isChallengeCompletedSelector,
   isSignedInSelector,
   (
-    output: string[],
+    output: string,
     tests: Test[],
     isChallengeCompleted: boolean,
     isSignedIn: boolean
@@ -82,7 +82,7 @@ interface BackEndProps {
   initTests: (tests: Test[]) => void;
   isChallengeCompleted: boolean;
   isSignedIn: boolean;
-  output: string[];
+  output: string;
   pageContext: {
     challengeMeta: ChallengeMeta;
   };
@@ -112,12 +112,7 @@ const ShowBackEnd = (props: BackEndProps) => {
       updateChallengeMeta,
       data: {
         challengeNode: {
-          challenge: {
-            fields: { tests },
-            title,
-            challengeType,
-            helpCategory
-          }
+          challenge: { challengeType, helpCategory, description, tests, title }
         }
       },
       pageContext: { challengeMeta }
@@ -132,10 +127,13 @@ const ShowBackEnd = (props: BackEndProps) => {
       title,
       challengeType,
       helpCategory,
+      description,
       ...challengePaths
     });
     challengeMounted(challengeMeta.id);
-    container.current?.focus();
+    // hack to ensure the container is focused after the component mounts
+    // and Gatsby doesn't interfere with the focus.
+    requestAnimationFrame(() => container.current?.focus());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -143,10 +141,10 @@ const ShowBackEnd = (props: BackEndProps) => {
     data: {
       challengeNode: {
         challenge: {
-          fields: { blockName },
           challengeType,
           forumTopicId,
           title,
+          id,
           description,
           instructions,
           translationPending,
@@ -186,6 +184,8 @@ const ShowBackEnd = (props: BackEndProps) => {
                 superBlock={superBlock}
                 description={description}
                 instructions={instructions}
+                block={block}
+                challengeId={id}
               />
               <Spacer size='m' />
               <SolutionForm
@@ -210,7 +210,11 @@ const ShowBackEnd = (props: BackEndProps) => {
               <Spacer size='m' />
             </Col>
             <CompletionModal />
-            <HelpModal challengeTitle={title} challengeBlock={blockName} />
+            <HelpModal
+              challengeTitle={title}
+              challengeBlock={block}
+              superBlock={superBlock}
+            />
           </Row>
         </Container>
       </LearnLayout>
@@ -237,12 +241,11 @@ export const query = graphql`
         block
         translationPending
         fields {
-          blockName
           slug
-          tests {
-            text
-            testString
-          }
+        }
+        tests {
+          text
+          testString
         }
       }
     }

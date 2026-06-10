@@ -1,28 +1,44 @@
-/* eslint-disable @typescript-eslint/no-base-to-string */
-import ObjectID from 'bson-objectid';
+import { ObjectId } from 'bson';
+import type { ChallengeLang } from '@freecodecamp/shared/config/curriculum';
 
 const sanitizeTitle = (title: string) => {
   return title.includes(':') || title.includes("'") ? `"${title}"` : title;
 };
 
 interface ChallengeOptions {
-  challengeId: ObjectID;
+  challengeId: ObjectId;
   title: string;
   dashedName: string;
   challengeType: string;
+  questionCount?: number;
+  challengeLang?: ChallengeLang;
+  inputType?: string;
 }
 
 const buildFrontMatter = ({
   challengeId,
   title,
   dashedName,
-  challengeType
-}: ChallengeOptions) => `---
+  challengeType,
+  challengeLang,
+  inputType
+}: ChallengeOptions) => {
+  const langString = challengeLang
+    ? `
+lang: ${challengeLang}`
+    : '';
+  const inputTypeString = inputType
+    ? `
+inputType: ${inputType}`
+    : '';
+
+  return `---
 id: ${challengeId.toString()}
 title: ${sanitizeTitle(title)}
 challengeType: ${challengeType}
-dashedName: ${dashedName}
+dashedName: ${dashedName}${langString}${inputTypeString}
 ---`;
+};
 
 const buildFrontMatterWithVideo = ({
   challengeId,
@@ -70,437 +86,10 @@ Test 1
 \`\`\`
 `;
 
-const getQuizChallengeTemplate = (
-  options: ChallengeOptions
-): string => `${buildFrontMatter(options)}
+const getQuizChallengeTemplate = (options: ChallengeOptions): string => {
+  const count = options.questionCount!;
 
-# --description--
-
-To pass the quiz, you must correctly answer at least 17 of the 20 questions below.
-
-# --quizzes--
-
-## --quiz--
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
-
-#### --text--
-
-Placeholder question
-
-#### --distractors--
-
-Placeholder distractor 1
-
----
-
-Placeholder distractor 2
-
----
-
-Placeholder distractor 3
-
-#### --answer--
-
-Placeholder answer
-
-### --question--
+  const regularQuestion = `### --question--
 
 #### --text--
 
@@ -523,6 +112,87 @@ Placeholder distractor 3
 Placeholder answer
 
 `;
+
+  const questionWithAudio = `### --question--
+
+#### --text--
+
+Placeholder question
+
+#### --audio--
+
+\`\`\`json
+{
+  "audio": {
+    "filename": "1.1-1.mp3",
+    "startTimestamp": 5.7,
+    "finishTimestamp": 6.48
+  },
+  "transcript": [
+    {
+      "character": "Tom",
+      "text": "Hi, I'm Tom."
+    }
+  ]
+}
+\`\`\`
+
+#### --distractors--
+
+Placeholder distractor 1
+
+---
+
+Placeholder distractor 2
+
+---
+
+Placeholder distractor 3
+
+#### --answer--
+
+Placeholder answer
+
+`;
+
+  const firstQuestion = options.challengeLang
+    ? questionWithAudio
+    : regularQuestion;
+
+  return `${buildFrontMatter(options)}
+
+# --description--
+
+To pass the quiz, you must correctly answer at least ${count == 20 ? '18' : '9'} of the ${count.toString()} questions below.
+
+# --quizzes--
+
+## --quiz--
+
+${firstQuestion}${regularQuestion.repeat(Math.max(0, count - 2))}
+### --question--
+
+#### --text--
+
+Placeholder question
+
+#### --distractors--
+
+Placeholder distractor 1
+
+---
+
+Placeholder distractor 2
+
+---
+
+Placeholder distractor 3
+
+#### --answer--
+
+Placeholder answer
+`;
+};
 
 const getVideoChallengeTemplate = (
   options: ChallengeOptions
@@ -592,7 +262,25 @@ Answer 3
 
 const getMultipleChoiceChallengeTemplate = (
   options: ChallengeOptions
-): string => `${buildFrontMatter(options)}
+): string => {
+  const correctAnswerIndex = Math.floor(Math.random() * 4) + 1;
+  const feedback = (index: number) =>
+    index === correctAnswerIndex
+      ? ''
+      : `
+### --feedback--
+
+Include feedback for answer ${index} here.
+`;
+
+  const answers = [1, 2, 3, 4]
+    .map(
+      index => `Answer ${index}
+${feedback(index)}`
+    )
+    .join('\n---\n\n');
+
+  return `${buildFrontMatter(options)}
 
 # --description--
 
@@ -606,40 +294,12 @@ ${options.title} question?
 
 ## --answers--
 
-Answer 1
-
-### --feedback--
-
-Include feedback for answer 1 here, but remove these last four lines if this is the correct answer.
-
----
-
-Answer 2
-
-### --feedback--
-
-Include feedback for answer 2 here, but remove these last four lines if this is the correct answer.
-
----
-
-Answer 3
-
-### --feedback--
-
-Include feedback for answer 3 here, but remove these last four lines if this is the correct answer.
-
----
-
-Answer 4
-
-### --feedback--
-
-Include feedback for answer 4 here, but remove these last four lines if this is the correct answer.
-
+${answers}
 ## --video-solution--
 
-1
+${correctAnswerIndex}
 `;
+};
 
 const getFillInTheBlankChallengeTemplate = (
   options: ChallengeOptions
@@ -679,6 +339,155 @@ Watch the video below to understand the context of the upcoming lessons.
 # --assignment--
 
 Watch the video.
+
+# --scene--
+
+\`\`\`json
+{
+  "setup": {
+    "background": "chaos.png",
+    "characters": [
+      {
+        "character": "David",
+        "position": {"x":50,"y":80,"z":8},
+        "opacity": 0
+      }
+    ],
+    "audio": {
+      "filename": "1.1-1.mp3",
+      "startTime": 1,
+      "startTimestamp": 5.7,
+      "finishTimestamp": 6.48
+    }
+  },
+  "commands": [
+    {
+      "character": "David",
+      "opacity": 1,
+      "startTime": 0
+    },
+    {
+      "character": "David",
+      "startTime": 1,
+      "finishTime": 0.78,
+      "dialogue": {
+        "text": "I'm Tom.",
+        "align": "center"
+      }
+    },
+    {
+      "character": "Tom",
+      "opacity": 0,
+      "startTime": 1.28
+    }
+  ]
+}
+\`\`\`
+`;
+
+const getGenericChallengeTemplate = (
+  options: ChallengeOptions
+): string => `${buildFrontMatter(options)}
+
+# --description--
+
+Generic challenge description.
+
+# --assignment--
+
+Do the assignment.
+`;
+
+interface DailyCodingChallengeOptions {
+  challengeId: ObjectId;
+  challengeNumber: number;
+}
+
+export const getDailyJavascriptChallengeTemplate = ({
+  challengeId,
+  challengeNumber
+}: DailyCodingChallengeOptions) => `---
+id: ${challengeId.toString()}
+title: "Challenge ${challengeNumber}: Placeholder"
+challengeType: 28
+dashedName: challenge-${challengeNumber}
+---
+
+# --description--
+
+Placeholder description
+
+# --hints--
+
+Placeholder test
+
+\`\`\`js
+assert.isTrue(true);
+\`\`\`
+
+# --seed--
+
+## --seed-contents--
+
+\`\`\`js
+function placeholder(arg) {
+
+  return arg;
+}
+\`\`\`
+
+# --solutions--
+
+\`\`\`js
+function placeholder(arg) {
+
+  return arg;
+}
+\`\`\`
+`;
+
+export const getDailyPythonChallengeTemplate = ({
+  challengeId,
+  challengeNumber
+}: DailyCodingChallengeOptions) => `---
+id: ${challengeId.toString()}
+title: "Challenge ${challengeNumber}: Placeholder"
+challengeType: 29
+dashedName: challenge-${challengeNumber}
+---
+
+# --description--
+
+Placeholder description
+
+# --hints--
+
+Placeholder test
+
+\`\`\`js
+({test: () => { runPython(\`
+from unittest import TestCase
+TestCase().assertTrue(True)\`)
+}})
+\`\`\`
+
+# --seed--
+
+## --seed-contents--
+
+\`\`\`py
+def placeholder(arg):
+
+    return arg
+\`\`\`
+
+# --solutions--
+
+\`\`\`py
+def placeholder(arg):
+
+    return arg
+\`\`\`
 `;
 
 type Template = (opts: ChallengeOptions) => string;
@@ -726,5 +535,7 @@ const challengeTypeToTemplate: {
   19: getMultipleChoiceChallengeTemplate,
   20: null,
   21: getDialogueChallengeTemplate,
-  22: getFillInTheBlankChallengeTemplate
+  22: getFillInTheBlankChallengeTemplate,
+  23: null,
+  24: getGenericChallengeTemplate
 };

@@ -1,31 +1,60 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import {
+  describe,
+  test,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+  vi,
+  MockInstance
+} from 'vitest';
 import jwt, { JwtPayload } from 'jsonwebtoken';
-import type { Prisma } from '@prisma/client';
-import { ObjectId } from 'mongodb';
-import _ from 'lodash';
+import { DailyCodingChallengeLanguage, type Prisma } from '@prisma/client';
+import { ObjectId } from 'bson';
+import { omit } from 'lodash-es';
 
-import { createUserInput } from '../../utils/create-user';
+import { createUserInput } from '../../utils/create-user.js';
 import {
   defaultUserId,
   defaultUserEmail,
   devLogin,
   setupServer,
   superRequest,
-  createSuperRequest
-} from '../../../jest.utils';
-import { JWT_SECRET } from '../../utils/env';
+  createSuperRequest,
+  defaultUsername,
+  resetDefaultUser
+} from '../../../vitest.utils.js';
+import { JWT_SECRET } from '../../utils/env.js';
 import {
   clearEnvExam,
   seedEnvExam,
   seedEnvExamAttempt,
   seedExamEnvExamAuthToken
-} from '../../../__mocks__/env-exam';
-import { getMsTranscriptApiUrl } from './user';
+} from '../../../__fixtures__/exam-environment-exam.js';
+import * as getChallengesModule from '../../utils/get-challenges.js';
+import { getMsTranscriptApiUrl } from './user.js';
 
-const mockedFetch = jest.fn();
-jest.spyOn(globalThis, 'fetch').mockImplementation(mockedFetch);
+const mockedFetch = vi.fn();
+vi.spyOn(globalThis, 'fetch').mockImplementation(mockedFetch);
+
+let mockDeploymentEnv = 'staging';
+vi.mock('../../utils/env', async () => {
+  const actualEnv =
+    await vi.importActual<typeof import('../../utils/env.js')>(
+      '../../utils/env'
+    );
+  return {
+    ...actualEnv,
+    get DEPLOYMENT_ENV() {
+      return mockDeploymentEnv;
+    },
+    JWT_SECRET: actualEnv.JWT_SECRET
+  };
+});
 
 // This is used to build a test user.
 const testUserData: Prisma.userCreateInput = {
@@ -77,6 +106,16 @@ const testUserData: Prisma.userCreateInput = {
       }
     }
   ],
+  completedDailyCodingChallenges: [
+    {
+      id: '5900f36e1000cf542c50fe80',
+      completedDate: 1742941672524,
+      languages: [
+        DailyCodingChallengeLanguage.python,
+        DailyCodingChallengeLanguage.javascript
+      ]
+    }
+  ],
   partiallyCompletedChallenges: [{ id: '123', completedDate: 123 }],
   completedExams: [],
   quizAttempts: [
@@ -115,7 +154,9 @@ const testUserData: Prisma.userCreateInput = {
   ],
   yearsTopContributor: ['2018'],
   twitter: '@foobar',
-  linkedin: 'linkedin.com/foobar'
+  bluesky: '@foobar',
+  linkedin: 'linkedin.com/foobar',
+  sendQuincyEmail: false
 };
 
 const minimalUserData: Prisma.userCreateInput = {
@@ -128,6 +169,7 @@ const minimalUserData: Prisma.userCreateInput = {
   picture: 'https://www.freecodecamp.org/cat.png',
   sendQuincyEmail: true,
   username: 'testuser',
+  usernameDisplay: 'testuser',
   unsubscribeId: '1234567890'
 };
 
@@ -136,6 +178,7 @@ const lockedProfileUI = {
   showAbout: false,
   showCerts: false,
   showDonation: false,
+  showExperience: false,
   showHeatMap: false,
   showLocation: false,
   showName: false,
@@ -145,7 +188,7 @@ const lockedProfileUI = {
 };
 
 // These are not part of the schema, but are added to the user object by
-// get-session-user's handler
+// session-user's handler
 const computedProperties = {
   calendar: {},
   completedChallengeCount: 0,
@@ -156,7 +199,7 @@ const computedProperties = {
   profileUI: lockedProfileUI
 };
 
-// The following appears in get-session-user responses, but not
+// The following appears in session-user responses, but not
 // get-public-profile
 const sessionOnlyData = {
   currentChallengeId: testUserData.currentChallengeId,
@@ -217,12 +260,24 @@ const publicUserData = {
       }
     }
   ],
+  completedDailyCodingChallenges: [
+    {
+      id: '5900f36e1000cf542c50fe80',
+      completedDate: 1742941672524,
+      languages: [
+        DailyCodingChallengeLanguage.python,
+        DailyCodingChallengeLanguage.javascript
+      ]
+    }
+  ],
   completedExams: testUserData.completedExams,
   completedSurveys: [], // TODO: add surveys
   quizAttempts: testUserData.quizAttempts,
+  experience: [],
   githubProfile: testUserData.githubProfile,
   is2018DataVisCert: testUserData.is2018DataVisCert,
   is2018FullStackCert: testUserData.is2018FullStackCert, // TODO: should this be returned? The client doesn't use it at the moment.
+  isA2EnglishCert: testUserData.isA2EnglishCert,
   isApisMicroservicesCert: testUserData.isApisMicroservicesCert,
   isBackEndCert: testUserData.isBackEndCert,
   isCheater: testUserData.isCheater,
@@ -237,13 +292,24 @@ const publicUserData = {
   isHonest: testUserData.isHonest,
   isInfosecCertV7: testUserData.isInfosecCertV7,
   isInfosecQaCert: testUserData.isInfosecQaCert,
+  isJavascriptCertV9: testUserData.isJavascriptCertV9,
   isJsAlgoDataStructCert: testUserData.isJsAlgoDataStructCert,
   isJsAlgoDataStructCertV8: testUserData.isJsAlgoDataStructCertV8,
   isMachineLearningPyCertV7: testUserData.isMachineLearningPyCertV7,
+  isPythonCertV9: testUserData.isPythonCertV9,
   isQaCertV7: testUserData.isQaCertV7,
   isRelationalDatabaseCertV8: testUserData.isRelationalDatabaseCertV8,
+  isRelationalDatabaseCertV9: testUserData.isRelationalDatabaseCertV9,
   isRespWebDesignCert: testUserData.isRespWebDesignCert,
+  isRespWebDesignCertV9: testUserData.isRespWebDesignCertV9,
   isSciCompPyCertV7: testUserData.isSciCompPyCertV7,
+  isFrontEndLibsCertV9: testUserData.isFrontEndLibsCertV9,
+  isBackEndDevApisCertV9: testUserData.isBackEndDevApisCertV9,
+  isFullStackDeveloperCertV9: testUserData.isFullStackDeveloperCertV9,
+  isB1EnglishCert: testUserData.isB1EnglishCert,
+  isA2SpanishCert: testUserData.isA2SpanishCert,
+  isA2ChineseCert: testUserData.isA2ChineseCert,
+  isA1ChineseCert: testUserData.isA1ChineseCert,
   linkedin: testUserData.linkedin,
   location: testUserData.location,
   name: testUserData.name,
@@ -253,8 +319,12 @@ const publicUserData = {
   portfolio: testUserData.portfolio,
   profileUI: testUserData.profileUI,
   savedChallenges: testUserData.savedChallenges,
-  twitter: 'https://twitter.com/foobar',
-  username: testUserData.usernameDisplay, // It defaults to usernameDisplay
+  socrates: true,
+  twitter: 'https://x.com/foobar',
+  bluesky: 'https://bsky.app/profile/foobar',
+  sendQuincyEmail: testUserData.sendQuincyEmail,
+  username: testUserData.username,
+  usernameDisplay: testUserData.usernameDisplay,
   website: testUserData.website,
   yearsTopContributor: testUserData.yearsTopContributor
 };
@@ -270,6 +340,8 @@ const sessionUserData = {
 
 const baseProgressData = {
   currentChallengeId: '',
+  isA2EnglishCert: false,
+  isB1EnglishCert: false,
   isRespWebDesignCert: false,
   is2018DataVisCert: false,
   isFrontEndLibsCert: false,
@@ -283,12 +355,17 @@ const baseProgressData = {
   isBackEndCert: false,
   isDataVisCert: false,
   isFullStackCert: false,
+  isJavascriptCertV9: false,
   isSciCompPyCertV7: false,
   isDataAnalysisPyCertV7: false,
   isMachineLearningPyCertV7: false,
+  isPythonCertV9: false,
   isRelationalDatabaseCertV8: false,
+  isRelationalDatabaseCertV9: false,
+  isRespWebDesignCertV9: false,
   isCollegeAlgebraPyCertV8: false,
   completedChallenges: [],
+  completedDailyCodingChallenges: [],
   completedExams: [],
   savedChallenges: [],
   partiallyCompletedChallenges: [],
@@ -361,15 +438,17 @@ describe('userRoutes', () => {
       });
 
       test('POST returns 200 status code with empty object', async () => {
-        expect(await fastifyTestInstance.prisma.user.count()).toBe(1);
+        const initialCount = await fastifyTestInstance.prisma.user.count();
         const response = await superPost('/account/delete');
-        const userCount = await fastifyTestInstance.prisma.user.count({
+        const finalCount = await fastifyTestInstance.prisma.user.count();
+        const deletedUser = await fastifyTestInstance.prisma.user.findFirst({
           where: { email: testUserData.email }
         });
 
         expect(response.body).toStrictEqual({});
         expect(response.status).toBe(200);
-        expect(userCount).toBe(0);
+        expect(finalCount).toBe(initialCount - 1);
+        expect(deletedUser).toBeNull();
       });
 
       test('POST deletes Microsoft usernames associated with the user', async () => {
@@ -397,17 +476,17 @@ describe('userRoutes', () => {
       test("POST deletes all the user's cookies", async () => {
         const res = await superPost('/account/delete');
 
-        const setCookie = res.headers['set-cookie'];
+        const setCookie = res.headers['set-cookie'] as string[];
         expect(setCookie).toEqual(
           expect.arrayContaining([
             expect.stringMatching(
-              /^jwt_access_token=; Path=\/; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
+              /^_csrf=; Max-Age=0; Path=\/; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
             ),
             expect.stringMatching(
-              /^csrf_token=; Path=\/; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
+              /^csrf_token=; Max-Age=0; Path=\/; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
             ),
             expect.stringMatching(
-              /^_csrf=; Path=\/; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
+              /^jwt_access_token=; Max-Age=0; Path=\/; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
             )
           ])
         );
@@ -418,13 +497,13 @@ describe('userRoutes', () => {
         await seedEnvExam();
         await seedEnvExamAttempt();
         const countBefore =
-          await fastifyTestInstance.prisma.envExamAttempt.count();
+          await fastifyTestInstance.prisma.examEnvironmentExamAttempt.count();
         expect(countBefore).toBe(1);
 
         const res = await superPost('/account/delete');
 
         const countAfter =
-          await fastifyTestInstance.prisma.envExamAttempt.count();
+          await fastifyTestInstance.prisma.examEnvironmentExamAttempt.count();
         expect(countAfter).toBe(0);
         expect(res.status).toBe(200);
       });
@@ -441,6 +520,201 @@ describe('userRoutes', () => {
           await fastifyTestInstance.prisma.examEnvironmentAuthorizationToken.count();
         expect(countAfter).toBe(0);
         expect(res.status).toBe(200);
+      });
+
+      test('handles concurrent requests to delete the same user', async () => {
+        const deletePromises = Array.from({ length: 2 }, () =>
+          superPost('/account/delete')
+        );
+
+        const responses = await Promise.all(deletePromises);
+
+        const userCount = await fastifyTestInstance.prisma.user.count({
+          where: { email: testUserData.email }
+        });
+        // Both requests race: one deletes the user and returns 200. The other
+        // may get a 401 if the auth middleware queries the DB after the user has
+        // already been deleted by the first request.
+        responses.forEach(response => {
+          expect([200, 401]).toContain(response.status);
+        });
+        expect(userCount).toBe(0);
+      });
+
+      test("only deletes the logged in user's data", async () => {
+        const initialCount = await fastifyTestInstance.prisma.user.count();
+        const otherEmail = 'an.random@user';
+        const otherUser = await fastifyTestInstance.prisma.user.create({
+          data: {
+            ...testUserData,
+            email: otherEmail
+          }
+        });
+        expect(otherUser.email).toBe(otherEmail);
+        const afterAdd = await fastifyTestInstance.prisma.user.count();
+        expect(afterAdd).toBe(initialCount + 1);
+
+        await superPost('/account/delete');
+
+        const finalCount = await fastifyTestInstance.prisma.user.count();
+        expect(finalCount).toBe(initialCount);
+        const remaining = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: otherEmail }
+        });
+        expect(remaining).not.toBeNull();
+      });
+
+      test('logs if it is asked to delete a non-existent user', async () => {
+        const spy = vi.spyOn(fastifyTestInstance.log, 'warn');
+
+        // Note: this could be flaky since the log is generated if the two
+        // requests are concurrent. If they're sequential the second request
+        // will be not be authed and hence not log anything.
+        const deletePromises = Array.from({ length: 2 }, () =>
+          superPost('/account/delete')
+        );
+        await Promise.all(deletePromises);
+        const messages: string[] = spy.mock.calls.map(call =>
+          call.map(part => String(part)).join(' ')
+        );
+        const found = messages.some(m =>
+          m.includes(`User with id ${defaultUserId} not found for deletion.`)
+        );
+        expect(found).toBe(true);
+      });
+    });
+
+    describe('/users/:userId', () => {
+      afterEach(async () => {
+        await fastifyTestInstance.prisma.userToken.deleteMany({
+          where: { OR: [{ userId: defaultUserId }, { userId: otherUserId }] }
+        });
+        await fastifyTestInstance.prisma.msUsername.deleteMany({
+          where: { OR: [{ userId: defaultUserId }, { userId: otherUserId }] }
+        });
+        await clearEnvExam();
+      });
+
+      test('DELETE returns 204 status code with empty object', async () => {
+        const response = await superDelete(`/users/${defaultUserId}`);
+        const userCount = await fastifyTestInstance.prisma.user.count({
+          where: { email: testUserData.email }
+        });
+
+        expect(response.body).toStrictEqual({});
+        expect(response.status).toBe(204);
+        expect(userCount).toBe(0);
+      });
+
+      test('DELETE deletes Microsoft usernames associated with the user', async () => {
+        await fastifyTestInstance.prisma.msUsername.createMany({
+          data: msUsernameData
+        });
+
+        await superDelete(`/users/${defaultUserId}`);
+        expect(await fastifyTestInstance.prisma.msUsername.count()).toBe(1);
+      });
+
+      test('DELETE deletes userTokens associated with the user', async () => {
+        await fastifyTestInstance.prisma.userToken.createMany({
+          data: tokenData
+        });
+
+        await superDelete(`/users/${defaultUserId}`);
+
+        const userTokens =
+          await fastifyTestInstance.prisma.userToken.findMany();
+        expect(userTokens).toHaveLength(1);
+        expect(userTokens[0]?.userId).toBe(otherUserId);
+      });
+
+      test("DELETE deletes all the user's cookies", async () => {
+        const res = await superDelete(`/users/${defaultUserId}`);
+
+        const setCookie = res.headers['set-cookie'] as string[];
+        expect(setCookie).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(
+              /^_csrf=; Max-Age=0; Path=\/:?; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
+            ),
+            expect.stringMatching(
+              /^csrf_token=; Max-Age=0; Path=\/:?; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
+            ),
+            expect.stringMatching(
+              /^jwt_access_token=; Max-Age=0; Path=\/:?; Expires=Thu, 01 Jan 1970 00:00:00 GMT/
+            )
+          ])
+        );
+        expect(setCookie).toHaveLength(3);
+      });
+
+      test("DELETE deletes all the user's exam attempts", async () => {
+        await seedEnvExam();
+        await seedEnvExamAttempt();
+        const countBefore =
+          await fastifyTestInstance.prisma.examEnvironmentExamAttempt.count();
+        expect(countBefore).toBe(1);
+
+        const res = await superDelete(`/users/${defaultUserId}`);
+
+        const countAfter =
+          await fastifyTestInstance.prisma.examEnvironmentExamAttempt.count();
+        expect(countAfter).toBe(0);
+        expect(res.status).toBe(204);
+      });
+
+      test("DELETE deletes all the user's exam tokens", async () => {
+        await seedExamEnvExamAuthToken();
+        const countBefore =
+          await fastifyTestInstance.prisma.examEnvironmentAuthorizationToken.count();
+        expect(countBefore).toBe(1);
+
+        const res = await superDelete(`/users/${defaultUserId}`);
+
+        const countAfter =
+          await fastifyTestInstance.prisma.examEnvironmentAuthorizationToken.count();
+        expect(countAfter).toBe(0);
+        expect(res.status).toBe(204);
+      });
+
+      test("only deletes the logged in user's data", async () => {
+        const initialCount = await fastifyTestInstance.prisma.user.count();
+        await fastifyTestInstance.prisma.user.create({
+          data: {
+            ...testUserData,
+            email: 'an.random@user'
+          }
+        });
+        expect(await fastifyTestInstance.prisma.user.count()).toBe(
+          initialCount + 1
+        );
+
+        await superDelete(`/users/${defaultUserId}`);
+
+        const userCount = await fastifyTestInstance.prisma.user.count();
+        expect(userCount).toBe(initialCount);
+      });
+
+      test('logs if it is asked to delete a non-existent user', async () => {
+        const spy = vi.spyOn(fastifyTestInstance.log, 'warn');
+
+        const deletePromises = Array.from({ length: 2 }, () =>
+          superDelete(`/users/${defaultUserId}`)
+        );
+
+        await Promise.all(deletePromises);
+
+        const messages = spy.mock.calls.flat().map(String);
+        expect(
+          messages.some(m =>
+            m.includes(`User with id ${defaultUserId} not found for deletion.`)
+          )
+        ).toBe(true);
+      });
+
+      test('returns 403 if attempting to delete a different user', async () => {
+        const res = await superDelete(`/users/${otherUserId}`);
+        expect(res.status).toBe(403);
       });
     });
 
@@ -496,6 +770,345 @@ describe('userRoutes', () => {
       });
 
       test.todo('POST resets the user to the default state');
+    });
+
+    describe('/account/reset-module', () => {
+      const testChallengesBlockOne = [
+        {
+          id: 'block-one-challenge-1',
+          completedDate: 1520002973119,
+          solution: null,
+          challengeType: 5,
+          files: []
+        },
+        {
+          id: 'block-one-challenge-2',
+          completedDate: 1520002973120,
+          solution: null,
+          challengeType: 5,
+          files: []
+        }
+      ];
+
+      const testChallengesBlockTwo = [
+        {
+          id: 'block-two-challenge-1',
+          completedDate: 1520002973121,
+          solution: null,
+          challengeType: 5,
+          files: []
+        },
+        {
+          id: 'block-two-challenge-2',
+          completedDate: 1520002973122,
+          solution: null,
+          challengeType: 5,
+          files: []
+        }
+      ];
+
+      const savedChallengesBlockOne = [
+        {
+          id: 'block-one-challenge-1',
+          lastSavedDate: 123,
+          files: [
+            {
+              contents: 'test-contents',
+              ext: 'js',
+              history: ['indexjs'],
+              key: 'indexjs',
+              name: 'test-name'
+            }
+          ]
+        }
+      ];
+
+      const partiallyCompletedChallengesBlockOne = [
+        {
+          id: 'block-one-challenge-1',
+          completedDate: 1520002973119
+        },
+        {
+          id: 'block-one-challenge-2',
+          completedDate: 1520002973120
+        }
+      ];
+
+      let getChallengeIdsByBlockSpy: MockInstance;
+
+      beforeEach(async () => {
+        // Mock getChallengeIdsByBlock to return test challenge IDs
+        getChallengeIdsByBlockSpy = vi
+          .spyOn(getChallengesModule, 'getChallengeIdsByBlock')
+          .mockImplementation((blockId: string) => {
+            if (blockId === 'block-one') {
+              return ['block-one-challenge-1', 'block-one-challenge-2'];
+            }
+            if (blockId === 'block-two') {
+              return ['block-two-challenge-1', 'block-two-challenge-2'];
+            }
+            return [];
+          });
+
+        await fastifyTestInstance.prisma.user.updateMany({
+          where: { email: testUserData.email },
+          data: {
+            completedChallenges: [
+              ...testChallengesBlockOne,
+              ...testChallengesBlockTwo
+            ],
+            savedChallenges: savedChallengesBlockOne,
+            partiallyCompletedChallenges: partiallyCompletedChallengesBlockOne,
+            isRespWebDesignCert: true
+          }
+        });
+      });
+
+      afterEach(() => {
+        getChallengeIdsByBlockSpy.mockRestore();
+      });
+
+      test('DELETE returns 400 for missing blockIds', async () => {
+        const response = await superDelete('/account/reset-module').send({});
+
+        expect(response.status).toBe(400);
+      });
+
+      test('DELETE returns 400 for empty blockIds array', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: []
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      test('DELETE returns 400 for blockIds containing an empty string', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: ['']
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      test('DELETE returns 400 when blockIds exceeds maxItems', async () => {
+        const tooMany = Array.from({ length: 501 }, (_, i) => `block-${i}`);
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: tooMany
+        });
+
+        expect(response.status).toBe(400);
+      });
+
+      test('DELETE returns 200 with removedChallengeIds', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toStrictEqual({
+          removedChallengeIds: expect.arrayContaining([
+            'block-one-challenge-1',
+            'block-one-challenge-2'
+          ])
+        });
+      });
+
+      test('DELETE removes only challenges from the specified block', async () => {
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        const user = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(user?.completedChallenges).toHaveLength(2);
+        const challengeIds = (
+          user?.completedChallenges as { id: string }[]
+        ).map(c => c.id);
+        expect(challengeIds).toContain('block-two-challenge-1');
+        expect(challengeIds).toContain('block-two-challenge-2');
+        expect(challengeIds).not.toContain('block-one-challenge-1');
+        expect(challengeIds).not.toContain('block-one-challenge-2');
+      });
+
+      test('DELETE removes saved challenges from the specified block', async () => {
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        const user = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(user?.savedChallenges).toHaveLength(0);
+      });
+
+      test('DELETE removes partially completed challenges from the specified block', async () => {
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        const user = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(user?.partiallyCompletedChallenges).toHaveLength(0);
+      });
+
+      test('DELETE keeps certifications intact', async () => {
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        const user = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(user?.isRespWebDesignCert).toBe(true);
+      });
+
+      test('DELETE keeps progress timestamps intact', async () => {
+        const userBefore = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        const userAfter = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(userAfter?.progressTimestamps).toEqual(
+          userBefore?.progressTimestamps
+        );
+      });
+
+      test('DELETE does not delete userTokens', async () => {
+        await fastifyTestInstance.prisma.userToken.create({
+          data: {
+            created: new Date(),
+            id: '123',
+            ttl: 1000,
+            userId: defaultUserId
+          }
+        });
+
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        expect(await fastifyTestInstance.prisma.userToken.count()).toBe(1);
+
+        await fastifyTestInstance.prisma.userToken.deleteMany({
+          where: { userId: defaultUserId }
+        });
+      });
+
+      test('DELETE does not delete surveys', async () => {
+        await fastifyTestInstance.prisma.survey.create({
+          data: {
+            userId: defaultUserId,
+            title: 'Test Survey',
+            responses: []
+          }
+        });
+
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        expect(await fastifyTestInstance.prisma.survey.count()).toBe(1);
+
+        await fastifyTestInstance.prisma.survey.deleteMany({
+          where: { userId: defaultUserId }
+        });
+      });
+
+      test('DELETE handles multiple blocks in a single call', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: ['block-one', 'block-two']
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body.removedChallengeIds).toEqual(
+          expect.arrayContaining([
+            'block-one-challenge-1',
+            'block-one-challenge-2',
+            'block-two-challenge-1',
+            'block-two-challenge-2'
+          ])
+        );
+
+        const user = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(user?.completedChallenges).toHaveLength(0);
+      });
+
+      test('DELETE dedupes overlapping blockIds', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: ['block-one', 'block-one']
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body.removedChallengeIds).toHaveLength(2);
+      });
+
+      test('DELETE proceeds when only some blockIds are valid', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: ['block-one', 'non-existent-block']
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body.removedChallengeIds).toEqual(
+          expect.arrayContaining([
+            'block-one-challenge-1',
+            'block-one-challenge-2'
+          ])
+        );
+      });
+
+      test('DELETE only affects the authenticated user', async () => {
+        await fastifyTestInstance.prisma.user.create({
+          data: {
+            ...testUserData,
+            email: 'another@user.com',
+            completedChallenges: testChallengesBlockOne
+          }
+        });
+
+        await superDelete('/account/reset-module').send({
+          blockIds: ['block-one']
+        });
+
+        const otherUser = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: 'another@user.com' }
+        });
+
+        expect(otherUser?.completedChallenges).toHaveLength(2);
+
+        await fastifyTestInstance.prisma.user.deleteMany({
+          where: { email: 'another@user.com' }
+        });
+      });
+
+      test('DELETE returns 400 for non-existent blockId', async () => {
+        const response = await superDelete('/account/reset-module').send({
+          blockIds: ['non-existent-block']
+        });
+
+        expect(response.status).toBe(400);
+
+        const user = await fastifyTestInstance.prisma.user.findFirst({
+          where: { email: testUserData.email }
+        });
+
+        expect(user?.completedChallenges).toHaveLength(4);
+      });
     });
 
     describe('/user/user-token', () => {
@@ -621,7 +1234,7 @@ describe('userRoutes', () => {
           data: { username: '' }
         });
 
-        const response = await superGet('/user/get-session-user');
+        const response = await superGet('/user/session-user');
 
         expect(response.body).toStrictEqual({ user: {}, result: '' });
         expect(response.statusCode).toBe(500);
@@ -630,13 +1243,13 @@ describe('userRoutes', () => {
       // This should help debugging, since this the route returns this if
       // anything throws in the handler.
       test('GET does not return the error response if the request is valid', async () => {
-        const response = await superGet('/user/get-session-user');
+        const response = await superGet('/user/session-user');
 
         expect(response.body).not.toEqual({ user: {}, result: '' });
       });
 
       test('GET returns username as the result property', async () => {
-        const response = await superGet('/user/get-session-user');
+        const response = await superGet('/user/session-user');
 
         expect(response.body).toMatchObject({
           result: testUserData.username
@@ -656,7 +1269,7 @@ describe('userRoutes', () => {
           joinDate: new ObjectId(testUser?.id).getTimestamp().toISOString()
         };
 
-        const response = await superGet('/user/get-session-user');
+        const response = await superGet('/user/session-user');
         const {
           user: { foobar }
         } = response.body as unknown as {
@@ -683,7 +1296,7 @@ describe('userRoutes', () => {
         const tokens = await fastifyTestInstance.prisma.userToken.count();
         expect(tokens).toBe(1);
 
-        const response = await superGet('/user/get-session-user');
+        const response = await superGet('/user/session-user');
 
         const { userToken } = jwt.decode(
           response.body.user.foobar.userToken
@@ -700,7 +1313,7 @@ describe('userRoutes', () => {
         const msUsernames = await fastifyTestInstance.prisma.msUsername.count();
         expect(msUsernames).toBe(1);
 
-        const response = await superGet('/user/get-session-user');
+        const response = await superGet('/user/session-user');
 
         const { msUsername } = response.body.user.foobar;
 
@@ -726,7 +1339,7 @@ describe('userRoutes', () => {
         const setCookies = res.get('Set-Cookie');
 
         const publicUser = {
-          ..._.omit(minimalUserData, ['externalId', 'unsubscribeId']),
+          ...omit(minimalUserData, ['externalId', 'unsubscribeId']),
           ...computedProperties,
           id: testUser.id,
           joinDate: new ObjectId(testUser.id).getTimestamp().toISOString(),
@@ -734,8 +1347,10 @@ describe('userRoutes', () => {
           // missing in the user document.
           currentChallengeId: '',
           completedChallenges: [],
+          completedDailyCodingChallenges: [],
           completedExams: [],
           completedSurveys: [],
+          experience: [],
           partiallyCompletedChallenges: [],
           portfolio: [],
           savedChallenges: [],
@@ -743,6 +1358,7 @@ describe('userRoutes', () => {
           yearsTopContributor: [],
           is2018DataVisCert: false,
           is2018FullStackCert: false,
+          isA2EnglishCert: false,
           isApisMicroservicesCert: false,
           isBackEndCert: false,
           isCheater: false,
@@ -753,23 +1369,35 @@ describe('userRoutes', () => {
           isFrontEndCert: false,
           isFrontEndLibsCert: false,
           isFullStackCert: false,
+          isJavascriptCertV9: false,
           isHonest: false,
           isInfosecCertV7: false,
           isInfosecQaCert: false,
           isJsAlgoDataStructCert: false,
           isJsAlgoDataStructCertV8: false,
           isMachineLearningPyCertV7: false,
+          isPythonCertV9: false,
           isQaCertV7: false,
           isRelationalDatabaseCertV8: false,
+          isRelationalDatabaseCertV9: false,
           isRespWebDesignCert: false,
+          isRespWebDesignCertV9: false,
           isSciCompPyCertV7: false,
+          isFrontEndLibsCertV9: false,
+          isBackEndDevApisCertV9: false,
+          isFullStackDeveloperCertV9: false,
+          isB1EnglishCert: false,
+          isA2SpanishCert: false,
+          isA2ChineseCert: false,
+          isA1ChineseCert: false,
           keyboardShortcuts: false,
           location: '',
           name: '',
+          socrates: true,
           theme: 'default'
         };
 
-        const response = await superRequest('/user/get-session-user', {
+        const response = await superRequest('/user/session-user', {
           method: 'GET',
           setCookies
         });
@@ -785,15 +1413,16 @@ describe('userRoutes', () => {
     });
 
     describe('/user/report-user', () => {
-      let sendEmailSpy: jest.SpyInstance;
+      let sendEmailSpy: MockInstance;
       beforeEach(() => {
-        sendEmailSpy = jest
+        sendEmailSpy = vi
           .spyOn(fastifyTestInstance, 'sendEmail')
-          .mockImplementation(jest.fn());
+          .mockImplementation(vi.fn());
       });
 
-      afterEach(() => {
-        jest.clearAllMocks();
+      afterEach(async () => {
+        await resetDefaultUser();
+        vi.clearAllMocks();
       });
 
       test('POST returns 400 for empty username', async () => {
@@ -802,29 +1431,43 @@ describe('userRoutes', () => {
           reportDescription: 'Test Report'
         });
 
-        expect(response.statusCode).toBe(400);
+        expect(response.statusCode).toBe(404);
         expect(response.body).toStrictEqual({
           type: 'danger',
-          message: 'flash.provide-username'
+          message: 'flash.report-error'
         });
       });
 
       test('POST returns 400 for empty report', async () => {
         const response = await superPost('/user/report-user').send({
-          username: 'darth-vader',
+          username: testUserData.username,
           reportDescription: ''
         });
 
         expect(response.statusCode).toBe(400);
+      });
+
+      test('POST returns 403 for users with no email', async () => {
+        await fastifyTestInstance.prisma.user.updateMany({
+          where: { email: testUserData.email },
+          data: { email: null }
+        });
+
+        const response = await superPost('/user/report-user').send({
+          username: testUserData.username,
+          reportDescription: 'Test Report'
+        });
+
+        expect(response.statusCode).toBe(403);
         expect(response.body).toStrictEqual({
           type: 'danger',
-          message: 'flash.provide-username'
+          message: 'flash.report-error'
         });
       });
 
       test('POST sanitises report description', async () => {
         await superPost('/user/report-user').send({
-          username: 'darth-vader',
+          username: defaultUsername,
           reportDescription:
             '<script>const breath = "loud"</script>Luke, I am your father'
         });
@@ -846,7 +1489,7 @@ describe('userRoutes', () => {
           }
         );
         const response = await superPost('/user/report-user').send({
-          username: 'darth-vader',
+          username: testUser.username,
           reportDescription: 'Luke, I am your father'
         });
 
@@ -855,11 +1498,11 @@ describe('userRoutes', () => {
           from: 'team@freecodecamp.org',
           to: 'support@freecodecamp.org',
           cc: 'foo@bar.com',
-          subject: "Abuse Report : Reporting darth-vader's profile.",
+          subject: `Abuse Report : Reporting ${testUser.username}'s profile.`,
           text: `
 Hello Team,
 
-This is to report the profile of darth-vader.
+This is to report the profile of ${testUser.username}. ID: ${defaultUserId}.
 
 Report Details:
 
@@ -867,6 +1510,7 @@ Luke, I am your father
 
 
 Reported by:
+ID: ${testUser.id}
 Username: ${testUser.username}
 Name:
 Email: foo@bar.com
@@ -942,7 +1586,7 @@ Thanks and regards,
           });
         });
 
-        it('handles missing transcript urls', async () => {
+        test('handles missing transcript urls', async () => {
           const response = await superPost('/user/ms-username');
 
           expect(response.body).toStrictEqual({
@@ -952,25 +1596,19 @@ Thanks and regards,
           expect(response.statusCode).toBe(400);
         });
 
-        it('handles invalid transcript urls', async () => {
-          mockedFetch.mockImplementationOnce(() =>
-            Promise.resolve({
-              ok: false
-            })
-          );
-
+        test('handles invalid transcript urls', async () => {
           const response = await superPost('/user/ms-username').send({
             msTranscriptUrl: 'https://www.example.com'
           });
 
           expect(response.body).toStrictEqual({
             type: 'error',
-            message: 'flash.ms.transcript.link-err-2'
+            message: 'flash.ms.transcript.link-err-1'
           });
-          expect(response.statusCode).toBe(404);
+          expect(response.statusCode).toBe(400);
         });
 
-        it('handles the case that MS does not return a username', async () => {
+        test('handles the case that MS does not return a username', async () => {
           mockedFetch.mockImplementationOnce(() =>
             Promise.resolve({
               ok: true,
@@ -979,7 +1617,8 @@ Thanks and regards,
           );
 
           const response = await superPost('/user/ms-username').send({
-            msTranscriptUrl: 'https://www.example.com'
+            msTranscriptUrl:
+              'https://learn.microsoft.com/en-us/users/not/transcript/8u6ert43q1p'
           });
 
           expect(response.body).toStrictEqual({
@@ -989,7 +1628,7 @@ Thanks and regards,
           expect(response.statusCode).toBe(500);
         });
 
-        it('handles duplicate Microsoft usernames', async () => {
+        test('handles duplicate Microsoft usernames', async () => {
           mockedFetch.mockImplementationOnce(() =>
             Promise.resolve({
               ok: true,
@@ -1009,7 +1648,8 @@ Thanks and regards,
           });
 
           const response = await superPost('/user/ms-username').send({
-            msTranscriptUrl: 'https://www.example.com'
+            msTranscriptUrl:
+              'https://learn.microsoft.com/en-us/users/mot01/transcript/8wert4'
           });
 
           expect(response.body).toStrictEqual({
@@ -1020,7 +1660,7 @@ Thanks and regards,
           expect(response.statusCode).toBe(403);
         });
 
-        it('returns the username on success', async () => {
+        test('returns the username on success', async () => {
           const msUsername = 'ms-user';
           mockedFetch.mockImplementationOnce(() =>
             Promise.resolve({
@@ -1032,7 +1672,8 @@ Thanks and regards,
             })
           );
           const response = await superPost('/user/ms-username').send({
-            msTranscriptUrl: 'https://www.example.com'
+            msTranscriptUrl:
+              'https://learn.microsoft.com/en-us/users/mot01/transcript/8ert43q'
           });
 
           expect(response.body).toStrictEqual({
@@ -1041,7 +1682,7 @@ Thanks and regards,
           expect(response.statusCode).toBe(200);
         });
 
-        it('creates a record of the linked account', async () => {
+        test('creates a record of the linked account', async () => {
           const msUsername = 'super-user';
           mockedFetch.mockImplementationOnce(() =>
             Promise.resolve({
@@ -1054,7 +1695,8 @@ Thanks and regards,
           );
 
           await superPost('/user/ms-username').send({
-            msTranscriptUrl: 'https://www.example.com'
+            msTranscriptUrl:
+              'https://learn.microsoft.com/en-us/users/mot01/transcript/12345'
           });
 
           const linkedAccount =
@@ -1070,7 +1712,7 @@ Thanks and regards,
           });
         });
 
-        it('removes any other accounts linked to the same user', async () => {
+        test('removes any other accounts linked to the same user', async () => {
           const msUsernameOne = 'super-user';
           const msUsernameTwo = 'super-user-2';
           mockedFetch
@@ -1102,10 +1744,12 @@ Thanks and regards,
           });
 
           await superPost('/user/ms-username').send({
-            msTranscriptUrl: 'https://www.example.com'
+            msTranscriptUrl:
+              'https://learn.microsoft.com/en-us/users/mot01/transcript/8u6awert43q1plo'
           });
           await superPost('/user/ms-username').send({
-            msTranscriptUrl: 'https://www.example.com'
+            msTranscriptUrl:
+              'https://learn.microsoft.com/en-us/users/mot01/transcript/8u6awert43q1plo'
           });
 
           const linkedAccounts =
@@ -1115,7 +1759,7 @@ Thanks and regards,
           expect(linkedAccounts[1]?.msUsername).toBe(msUsernameTwo);
         });
 
-        it('calls the Microsoft API with the correct url', async () => {
+        test('calls the Microsoft API with the correct url', async () => {
           const msTranscriptUrl =
             'https://learn.microsoft.com/en-us/users/mot01/transcript/8u6awert43q1plo';
 
@@ -1182,6 +1826,14 @@ Thanks and regards,
     });
 
     describe('/user/exam-environment/token', () => {
+      beforeEach(() => {
+        mockDeploymentEnv = 'staging';
+      });
+
+      afterAll(() => {
+        mockDeploymentEnv = 'production';
+      });
+
       afterEach(async () => {
         await fastifyTestInstance.prisma.examEnvironmentAuthorizationToken.deleteMany(
           {
@@ -1191,6 +1843,7 @@ Thanks and regards,
       });
 
       test('POST generates a new token if one does not exist', async () => {
+        mockDeploymentEnv = 'production';
         const response = await superPost('/user/exam-environment/token');
         const { examEnvironmentAuthorizationToken } = response.body;
 
@@ -1213,6 +1866,7 @@ Thanks and regards,
       });
 
       test('POST only allows for one token per user id', async () => {
+        mockDeploymentEnv = 'production';
         const token =
           await fastifyTestInstance.prisma.examEnvironmentAuthorizationToken.create(
             {
@@ -1244,6 +1898,44 @@ Thanks and regards,
           );
         expect(tokens).toHaveLength(1);
       });
+
+      test('POST does not generate a new token in non-production environments for non-staff', async () => {
+        // Override deployment environment for this test
+        mockDeploymentEnv = 'staging';
+        const response = await superPost('/user/exam-environment/token');
+        expect(response.status).toBe(403);
+      });
+
+      test('POST does generate a new token in non-production environments for staff', async () => {
+        // Override deployment environment for this test
+        mockDeploymentEnv = 'staging';
+        await fastifyTestInstance.prisma.user.update({
+          where: {
+            id: defaultUserId
+          },
+          data: { email: 'camperbot@freecodecamp.org' }
+        });
+
+        const response = await superPost('/user/exam-environment/token');
+        const { examEnvironmentAuthorizationToken } = response.body;
+
+        const decodedToken = jwt.decode(examEnvironmentAuthorizationToken);
+
+        expect(decodedToken).toStrictEqual({
+          examEnvironmentAuthorizationToken:
+            expect.stringMatching(/^[a-z0-9]{24}$/),
+          iat: expect.any(Number)
+        });
+
+        expect(() =>
+          jwt.verify(examEnvironmentAuthorizationToken, 'wrong-secret')
+        ).toThrow();
+        expect(() =>
+          jwt.verify(examEnvironmentAuthorizationToken, JWT_SECRET)
+        ).not.toThrow();
+
+        expect(response.status).toBe(201);
+      });
     });
   });
 
@@ -1256,9 +1948,10 @@ Thanks and regards,
     });
 
     const endpoints: { path: string; method: 'GET' | 'POST' | 'DELETE' }[] = [
+      { path: `/users/${otherUserId}`, method: 'DELETE' },
       { path: '/account/delete', method: 'POST' },
       { path: '/account/reset-progress', method: 'POST' },
-      { path: '/user/get-session-user', method: 'GET' },
+      { path: '/account/reset-module', method: 'DELETE' },
       { path: '/user/user-token', method: 'DELETE' },
       { path: '/user/user-token', method: 'POST' },
       { path: '/user/ms-username', method: 'DELETE' },
@@ -1276,6 +1969,18 @@ Thanks and regards,
         expect(response.statusCode).toBe(401);
       });
     });
+
+    describe('/user/session-user', () => {
+      test('GET returns 200 with empty user object for unauthenticated users', async () => {
+        const response = await superRequest('/user/session-user', {
+          method: 'GET',
+          setCookies
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toStrictEqual({ user: {}, result: '' });
+      });
+    });
   });
 });
 
@@ -1290,19 +1995,42 @@ describe('Microsoft helpers', () => {
     const urlWithQueryParams = `${urlWithoutSlash}?foo=bar`;
     const urlWithQueryParamsAndSlash = `${urlWithSlash}?foo=bar`;
 
-    it('should extract the transcript id from the url', () => {
-      expect(getMsTranscriptApiUrl(urlWithoutSlash)).toBe(expectedUrl);
+    test('should extract the transcript id from the url', () => {
+      expect(getMsTranscriptApiUrl(urlWithoutSlash)).toEqual({
+        error: null,
+        data: expectedUrl
+      });
     });
 
-    it('should handle trailing slashes', () => {
-      expect(getMsTranscriptApiUrl(urlWithSlash)).toBe(expectedUrl);
+    test('should handle trailing slashes', () => {
+      expect(getMsTranscriptApiUrl(urlWithSlash)).toEqual({
+        error: null,
+        data: expectedUrl
+      });
     });
 
-    it('should ignore query params', () => {
-      expect(getMsTranscriptApiUrl(urlWithQueryParams)).toBe(expectedUrl);
-      expect(getMsTranscriptApiUrl(urlWithQueryParamsAndSlash)).toBe(
-        expectedUrl
-      );
+    test('should ignore query params', () => {
+      expect(getMsTranscriptApiUrl(urlWithQueryParams)).toEqual({
+        error: null,
+        data: expectedUrl
+      });
+      expect(getMsTranscriptApiUrl(urlWithQueryParamsAndSlash)).toEqual({
+        error: null,
+        data: expectedUrl
+      });
+    });
+
+    test('should return an error for invalid URLs', () => {
+      const validBadUrl = 'https://www.example.com/invalid-url';
+      expect(getMsTranscriptApiUrl(validBadUrl)).toEqual({
+        error: expect.any(String),
+        data: null
+      });
+      const invalidUrl = ' ';
+      expect(getMsTranscriptApiUrl(invalidUrl)).toEqual({
+        error: expect.any(String),
+        data: null
+      });
     });
   });
 });

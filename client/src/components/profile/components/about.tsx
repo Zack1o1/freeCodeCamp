@@ -10,27 +10,33 @@ import type { TFunction } from 'i18next';
 import { withTranslation } from 'react-i18next';
 import isURL from 'validator/lib/isURL';
 
+import { connect } from 'react-redux';
 import { FullWidthRow } from '../../helpers';
 import BlockSaveButton from '../../helpers/form/block-save-button';
 import SectionHeader from '../../settings/section-header';
-import type { CamperProps } from './camper';
+import { User } from '../../../redux/prop-types';
+import { submitNewAbout } from '../../../redux/settings/actions';
 
-type AboutProps = Omit<
-  CamperProps,
-  | 'linkedin'
-  | 'joinDate'
-  | 'isDonating'
-  | 'githubProfile'
-  | 'twitter'
-  | 'website'
-  | 'yearsTopContributor'
-> & {
+type AboutProps = {
+  user: User;
   t: TFunction;
   submitNewAbout: (formValues: FormValues) => void;
   setIsEditing: (isEditing: boolean) => void;
+  sectionTitle?: string;
 };
 
-type FormValues = Pick<AboutProps, 'name' | 'location' | 'picture' | 'about'>;
+type FormValues = {
+  name: string;
+  location: string;
+  picture: string;
+  about: string;
+};
+
+const mapDispatchToProps: {
+  submitNewAbout: () => void;
+} = {
+  submitNewAbout
+};
 
 const ShowImageValidationWarning = ({
   alertContent
@@ -45,14 +51,14 @@ const ShowImageValidationWarning = ({
 };
 
 const AboutSettings = ({
+  user,
   t,
-  name = '',
-  location = '',
-  picture = '',
-  about = '',
   submitNewAbout,
-  setIsEditing
+  setIsEditing,
+  sectionTitle
 }: AboutProps) => {
+  const { name = '', location = '', picture = '', about = '' } = user;
+
   const [formValues, setFormValues] = useState<FormValues>({
     name,
     location,
@@ -159,7 +165,9 @@ const AboutSettings = ({
 
   return (
     <>
-      <SectionHeader>{t('settings.headings.personal-info')}</SectionHeader>
+      <SectionHeader>
+        {sectionTitle ?? t('settings.headings.personal-info')}
+      </SectionHeader>
       <FullWidthRow>
         <form
           id='camper-identity'
@@ -176,6 +184,7 @@ const AboutSettings = ({
                 type='text'
                 value={formValues.name}
                 id='about-name-input'
+                placeholder='Camper Bot'
               />
             </FormGroup>
             <FormGroup controlId='about-location'>
@@ -187,6 +196,7 @@ const AboutSettings = ({
                 type='text'
                 value={formValues.location}
                 id='about-location-input'
+                placeholder='San Francisco, CA'
               />
             </FormGroup>
             <FormGroup controlId='about-picture'>
@@ -198,6 +208,7 @@ const AboutSettings = ({
                 type='url'
                 value={formValues.picture}
                 id='about-picture-input'
+                placeholder='https://github.com/ghost.png'
               />
               {!isPictureUrlValid && (
                 <ShowImageValidationWarning
@@ -214,6 +225,7 @@ const AboutSettings = ({
                 onChange={handleAboutChange}
                 value={formValues.about}
                 id='about-about-input'
+                placeholder='A short bio about yourself'
               />
             </FormGroup>
           </div>
@@ -235,4 +247,6 @@ const AboutSettings = ({
 
 AboutSettings.displayName = 'AboutSettings';
 
-export default withTranslation()(AboutSettings);
+export default withTranslation()(
+  connect(null, mapDispatchToProps)(AboutSettings)
+);

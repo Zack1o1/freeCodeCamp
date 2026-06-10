@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 import { test, expect, Page } from '@playwright/test';
-import { SuperBlocks } from '../shared/config/curriculum';
+import { SuperBlocks } from '@freecodecamp/shared/config/curriculum';
 import translations from '../client/i18n/locales/english/translations.json';
 import tributePage from './fixtures/tribute-page.json';
 import curriculum from './fixtures/js-ads-projects.json';
@@ -27,7 +27,6 @@ interface Challenge {
   superBlock: string;
   dashedName: string;
   solutions: Solution[];
-  isPrivate?: boolean;
 }
 
 interface block {
@@ -75,11 +74,11 @@ const pasteContent = async (page: Page) => {
 test.use({ storageState: 'playwright/.auth/development-user.json' });
 
 test.beforeAll(() => {
-  execSync('node ./tools/scripts/seed/seed-demo-user');
+  execSync('node ../tools/scripts/seed/seed-demo-user');
 });
 
 test.afterAll(() => {
-  execSync('node ./tools/scripts/seed/seed-demo-user --certified-user');
+  execSync('node ../tools/scripts/seed/seed-demo-user --certified-user');
 });
 
 test.describe('Projects', () => {
@@ -159,10 +158,15 @@ test.describe('JavaScript projects can be submitted and then viewed in /settings
 
     await pasteContent(page);
 
-    await page.getByRole('button', { name: 'Run' }).click();
+    await page
+      .getByRole('button', { name: translations.buttons['check-code'] })
+      .click();
 
     await page
-      .getByRole('button', { name: 'Go to next challenge', exact: false })
+      .getByRole('button', {
+        name: translations.buttons['submit-continue'],
+        exact: false
+      })
       .click();
 
     // Submit the rest with the API.
@@ -219,17 +223,17 @@ test.describe('JavaScript projects can be submitted and then viewed in /settings
 
     await page
       .getByRole('button', {
-        name: 'Claim Certification Legacy JavaScript Algorithms and Data Structures'
+        name: 'Claim Certification Legacy JavaScript Algorithms and Data Structures V7'
       })
       .click();
 
     await alertToBeVisible(
       page,
-      '@developmentuser, you have successfully claimed the Legacy JavaScript Algorithms and Data Structures Certification! Congratulations on behalf of the freeCodeCamp.org team!'
+      '@developmentuser, you have successfully claimed the Legacy JavaScript Algorithms and Data Structures V7 Certification! Congratulations on behalf of the freeCodeCamp.org team!'
     );
 
     const showCertLink = page.getByRole('link', {
-      name: 'Show Certification Legacy JavaScript Algorithms and Data Structures'
+      name: 'Show Certification Legacy JavaScript Algorithms and Data Structures V7'
     });
     await expect(showCertLink).toBeVisible();
     await expect(showCertLink).toHaveAttribute(
@@ -239,13 +243,13 @@ test.describe('JavaScript projects can be submitted and then viewed in /settings
   });
 });
 
-test.describe('Completion modal should be shown after submitting a project', () => {
+test.describe('Submit button should be shown after submitting a project', () => {
   test.skip(
     ({ browserName }) => browserName !== 'chromium',
     'Only chromium allows us to use the clipboard API.'
   );
 
-  test('Ctrl + enter triggers the completion modal on multifile projects', async ({
+  test('Ctrl + enter triggers the submit button on multifile projects', async ({
     page,
     context,
     isMobile
@@ -276,7 +280,9 @@ test.describe('Completion modal should be shown after submitting a project', () 
 
     await page.keyboard.press('Control+Enter');
     await page
-      .getByRole('button', { name: 'Go to next challenge', exact: false })
+      .locator(
+        '[data-playwright-test-label="independentLowerJaw-submit-button"]'
+      )
       .click();
   });
 });

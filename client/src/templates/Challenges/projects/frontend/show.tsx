@@ -86,14 +86,14 @@ const ShowFrontEndProject = (props: ProjectProps) => {
       challengeMounted,
       data: {
         challengeNode: {
-          challenge: { fields, title, challengeType, helpCategory }
+          challenge: { tests, title, challengeType, helpCategory, description }
         }
       },
       pageContext: { challengeMeta },
       initTests,
       updateChallengeMeta
     } = props;
-    initTests(fields.tests);
+    initTests(tests);
     const challengePaths = getChallengePaths({
       currentCurriculumPaths: challengeMeta
     });
@@ -102,10 +102,13 @@ const ShowFrontEndProject = (props: ProjectProps) => {
       title,
       challengeType,
       helpCategory,
+      description,
       ...challengePaths
     });
     challengeMounted(challengeMeta.id);
-    container.current?.focus();
+    // hack to ensure the container is focused after the component mounts
+    // and Gatsby doesn't interfere with the focus.
+    requestAnimationFrame(() => container.current?.focus());
     // This effect should be run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,9 +118,9 @@ const ShowFrontEndProject = (props: ProjectProps) => {
       challengeNode: {
         challenge: {
           challengeType,
-          fields: { blockName },
           forumTopicId,
           title,
+          id,
           description,
           instructions,
           superBlock,
@@ -155,6 +158,8 @@ const ShowFrontEndProject = (props: ProjectProps) => {
                 superBlock={superBlock}
                 description={description}
                 instructions={instructions}
+                block={block}
+                challengeId={id}
               />
               <Spacer size='m' />
               <SolutionForm
@@ -170,7 +175,11 @@ const ShowFrontEndProject = (props: ProjectProps) => {
               <Spacer size='m' />
             </Col>
             <CompletionModal />
-            <HelpModal challengeTitle={title} challengeBlock={blockName} />
+            <HelpModal
+              challengeTitle={title}
+              challengeBlock={block}
+              superBlock={superBlock}
+            />
           </Row>
         </Container>
       </LearnLayout>
@@ -197,12 +206,11 @@ export const query = graphql`
         block
         translationPending
         fields {
-          blockName
           slug
-          tests {
-            text
-            testString
-          }
+        }
+        tests {
+          text
+          testString
         }
       }
     }

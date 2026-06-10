@@ -7,13 +7,12 @@ import { createSelector } from 'reselect';
 import type {
   ChallengeFiles,
   Test,
-  User,
-  ChallengeMeta
+  ChallengeMeta,
+  User
 } from '../../../redux/prop-types';
 import { userSelector } from '../../../redux/selectors';
 import {
   setEditorFocusability,
-  submitChallenge,
   openModal,
   setIsAdvancing
 } from '../redux/actions';
@@ -30,6 +29,7 @@ import {
 import './hotkeys.css';
 import { isProjectBased } from '../../../utils/curriculum-layout';
 import type { EditorProps } from '../classic/editor';
+import { useSubmit } from '../utils/fetch-all-curriculum-data';
 
 const mapStateToProps = createSelector(
   isHelpModalOpenSelector,
@@ -49,7 +49,7 @@ const mapStateToProps = createSelector(
     canFocusEditor: boolean,
     challengeFiles: ChallengeFiles,
     tests: Test[],
-    user: User,
+    user: User | null,
     { nextChallengePath, prevChallengePath }: ChallengeMeta
   ) => ({
     isHelpModalOpen,
@@ -59,7 +59,7 @@ const mapStateToProps = createSelector(
     canFocusEditor,
     challengeFiles,
     tests,
-    user,
+    keyboardShortcuts: !!user?.keyboardShortcuts,
     nextChallengePath,
     prevChallengePath
   })
@@ -67,7 +67,6 @@ const mapStateToProps = createSelector(
 
 const mapDispatchToProps = {
   setEditorFocusability,
-  submitChallenge,
   openShortcutsModal: () => openModal('shortcuts'),
   setIsAdvancing
 };
@@ -84,11 +83,7 @@ export type HotkeysProps = Pick<
   > &
   Pick<
     EditorProps,
-    | 'containerRef'
-    | 'tests'
-    | 'challengeFiles'
-    | 'submitChallenge'
-    | 'setEditorFocusability'
+    'containerRef' | 'tests' | 'challengeFiles' | 'setEditorFocusability'
   > & {
     isHelpModalOpen?: boolean;
     isResetModalOpen?: boolean;
@@ -101,7 +96,8 @@ export type HotkeysProps = Pick<
     setIsAdvancing: (arg0: boolean) => void;
     openShortcutsModal: () => void;
     playScene?: () => void;
-    user: User;
+    keyboardShortcuts: boolean;
+    showIndependentLowerJaw?: boolean;
   };
 
 function Hotkeys({
@@ -116,17 +112,19 @@ function Hotkeys({
   prevChallengePath,
   setEditorFocusability,
   setIsAdvancing,
-  submitChallenge,
   tests,
   usesMultifileEditor,
   openShortcutsModal,
   playScene,
-  user: { keyboardShortcuts },
+  keyboardShortcuts,
   isHelpModalOpen,
   isResetModalOpen,
   isShortcutsModalOpen,
-  isProjectPreviewModalOpen
+  isProjectPreviewModalOpen,
+  showIndependentLowerJaw
 }: HotkeysProps): JSX.Element {
+  const submitChallenge = useSubmit();
+
   const isModalOpen = [
     isHelpModalOpen,
     isResetModalOpen,
@@ -171,7 +169,7 @@ function Hotkeys({
           executeChallenge();
         }
       } else {
-        executeChallenge({ showCompletionModal: true });
+        executeChallenge({ showCompletionModal: !showIndependentLowerJaw });
       }
     },
     ...(keyboardShortcuts

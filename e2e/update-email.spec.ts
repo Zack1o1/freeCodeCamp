@@ -1,6 +1,16 @@
 import { test, expect } from '@playwright/test';
 import translations from '../client/i18n/locales/english/translations.json';
 import { allowTrailingSlash } from './utils/url';
+import {
+  deleteAllEmails,
+  getAllEmails,
+  getFirstEmail,
+  getSubject
+} from './utils/email';
+
+test.beforeEach(async () => {
+  await deleteAllEmails();
+});
 
 test.describe('The update-email page when the user is signed in', () => {
   test.beforeEach(async ({ page }) => {
@@ -28,11 +38,6 @@ test.describe('The update-email page when the user is signed in', () => {
     );
     await expect(submitButton).toBeVisible();
     await expect(submitButton).toHaveAttribute('type', 'submit');
-
-    const signOutButton = page.getByRole('link', { name: 'Sign out' });
-
-    await expect(signOutButton).toBeVisible();
-    await expect(signOutButton).toHaveAttribute('href', '/signout');
   });
 
   test('should enable the submit button if the email input is valid', async ({
@@ -46,6 +51,24 @@ test.describe('The update-email page when the user is signed in', () => {
     await expect(submitButton).toBeDisabled();
     await emailInput.fill('123@gmail.com');
     await expect(submitButton).toBeEnabled();
+  });
+
+  test('actually sends an email', async ({ page }) => {
+    const emailInput = page.getByLabel(translations.misc.email);
+    const submitButton = page.getByRole('button', { name: 'Update my Email' });
+
+    await expect(submitButton).toBeDisabled();
+    await emailInput.fill('123');
+    await expect(submitButton).toBeDisabled();
+    await emailInput.fill('123@gmail.com');
+    await submitButton.click();
+    await expect(async () => {
+      const emails = await getAllEmails();
+      expect(emails.messages).toHaveLength(1);
+      expect(getSubject(getFirstEmail(emails))).toBe(
+        'Please confirm your updated email address for freeCodeCamp.org'
+      );
+    }).toPass();
   });
 });
 

@@ -8,18 +8,22 @@ import { useMediaQuery } from 'react-responsive';
 import { bindActionCreators, Dispatch } from 'redux';
 import store from 'store';
 import { editor } from 'monaco-editor';
-import type { FitAddon } from 'xterm-addon-fit';
+import type { FitAddon } from '@xterm/addon-fit';
 
 import { useFeature } from '@growthbook/growthbook-react';
-import { challengeTypes } from '../../../../../shared/config/challenge-types';
+import { challengeTypes } from '@freecodecamp/shared/config/challenge-types';
 import LearnLayout from '../../../components/layouts/learn';
 import { MAX_MOBILE_WIDTH } from '../../../../config/misc';
 
 import type {
-  ChallengeData,
   ChallengeFiles,
   ChallengeMeta,
   ChallengeNode,
+  Hooks,
+  DailyCodingChallengeLanguages,
+  DailyCodingChallengeNode,
+  DailyCodingChallengePageContext,
+  PageContext,
   ResizeProps,
   SavedChallenge,
   SavedChallengeFiles,
@@ -33,6 +37,7 @@ import ChallengeTitle from '../components/challenge-title';
 import CompletionModal from '../components/completion-modal';
 import HelpModal from '../components/help-modal';
 import ShortcutsModal from '../components/shortcuts-modal';
+import MobileAppModal from '../components/mobile-app-modal';
 import Output from '../components/output';
 import Preview, { type PreviewProps } from '../components/preview';
 import ProjectPreviewModal from '../components/project-preview-modal';
@@ -76,8 +81,8 @@ import '../components/test-frame.css';
 
 const mapStateToProps = (state: unknown) => ({
   challengeFiles: challengeFilesSelector(state) as ChallengeFiles,
-  output: consoleOutputSelector(state) as string[],
-  isChallengeCompleted: isChallengeCompletedSelector(state) as boolean,
+  output: consoleOutputSelector(state) as string,
+  isChallengeCompleted: isChallengeCompletedSelector(state),
   savedChallenges: savedChallengesSelector(state) as SavedChallenge[]
 });
 
@@ -105,23 +110,23 @@ interface ShowClassicProps extends Pick<PreviewProps, 'previewMounted'> {
   cancelTests: () => void;
   challengeMounted: (arg0: string) => void;
   createFiles: (arg0: ChallengeFiles | SavedChallengeFiles) => void;
-  data: { challengeNode: ChallengeNode };
+  dailyCodingChallengeLanguage: DailyCodingChallengeLanguages;
+  data: { challengeNode: ChallengeNode | DailyCodingChallengeNode };
   executeChallenge: (options?: { showCompletionModal: boolean }) => void;
   challengeFiles: ChallengeFiles;
   initConsole: (arg0: string) => void;
   initTests: (tests: Test[]) => void;
-  initHooks: (hooks?: { beforeAll: string }) => void;
+  initHooks: (hooks?: Hooks) => void;
   initVisibleEditors: () => void;
   isChallengeCompleted: boolean;
-  output: string[];
-  pageContext: {
-    challengeMeta: ChallengeMeta;
-    projectPreview: {
-      challengeData: ChallengeData;
-    };
-  };
+  isDailyCodingChallenge?: boolean;
+  output: string;
+  pageContext: PageContext | DailyCodingChallengePageContext;
   updateChallengeMeta: (arg0: ChallengeMeta) => void;
   openModal: (modal: string) => void;
+  setDailyCodingChallengeLanguage: (
+    language: DailyCodingChallengeLanguages
+  ) => void;
   setEditorFocusability: (canFocus: boolean) => void;
   setIsAdvancing: (arg: boolean) => void;
   savedChallenges: SavedChallenge[];
@@ -151,15 +156,6 @@ const BASE_LAYOUT = {
   testsPane: { flex: 0.3 }
 };
 
-// Used to prevent monaco from stealing mouse/touch events on the upper jaw
-// content widget so they can trigger their default actions. (Issue #46166)
-const handleContentWidgetEvents = (e: MouseEvent | TouchEvent): void => {
-  const target = e.target as HTMLElement;
-  if (target?.closest('.editor-upper-jaw')) {
-    e.stopPropagation();
-  }
-};
-
 const StepPreview = ({
   dimensions,
   disableIframe,
@@ -172,7 +168,9 @@ const StepPreview = ({
   dimensions?: { width: number; height: number };
 }) => {
   return challengeType === challengeTypes.python ||
-    challengeType === challengeTypes.multifilePythonCertProject ? (
+    challengeType === challengeTypes.multifilePythonCertProject ||
+    challengeType === challengeTypes.pyLab ||
+    challengeType === challengeTypes.dailyChallengePy ? (
     <XtermTerminal dimensions={dimensions} xtermFitRef={xtermFitRef} />
   ) : (
     <Preview disableIframe={disableIframe} previewMounted={previewMounted} />
@@ -196,17 +194,19 @@ function ShowClassic({
         title,
         description,
         instructions,
+        id,
         hooks,
-        fields: { tests, blockName },
+        tests,
         challengeType,
-        hasEditableBoundaries,
+        hasEditableBoundaries = false,
         superBlock,
         helpCategory,
         forumTopicId,
         usesMultifileEditor,
         notes,
         videoUrl,
-        translationPending
+        translationPending,
+        saveSubmissionToDB
       }
     }
   },
@@ -222,6 +222,9 @@ function ShowClassic({
   initTests,
   initHooks,
   initVisibleEditors,
+  dailyCodingChallengeLanguage,
+  isDailyCodingChallenge = false,
+  setDailyCodingChallengeLanguage,
   updateChallengeMeta,
   openModal,
   setIsAdvancing,
@@ -304,6 +307,14 @@ function ShowClassic({
 
   // AB testing Pre-fetch in the Spanish locale
   const isPreFetchEnabled = useFeature('prefetch_ab_test').on;
+
+  // Independent lower jaw is only enabled for desktop.
+  const showIndependentLowerJaw = !isMobile;
+
+  const showSidePanelTests = isMobile || !hasEditableBoundaries;
+
+  // Show test
+
   useEffect(() => {
     if (isPreFetchEnabled && envData.clientLocale === 'espanol') {
       preloadPage(nextChallengePath);
@@ -312,13 +323,6 @@ function ShowClassic({
 
   useEffect(() => {
     initializeComponent(title);
-    // Bug fix for the monaco content widget and touch devices/right mouse
-    // click. (Issue #46166)
-    document.addEventListener('mousedown', handleContentWidgetEvents, true);
-    document.addEventListener('contextmenu', handleContentWidgetEvents, true);
-    document.addEventListener('touchstart', handleContentWidgetEvents, true);
-    document.addEventListener('touchmove', handleContentWidgetEvents, true);
-    document.addEventListener('touchend', handleContentWidgetEvents, true);
 
     window.addEventListener('resize', setHtmlHeight);
     setHtmlHeight();
@@ -326,31 +330,10 @@ function ShowClassic({
     return () => {
       createFiles([]);
       cancelTests();
-      document.removeEventListener(
-        'mousedown',
-        handleContentWidgetEvents,
-        true
-      );
-      document.removeEventListener(
-        'contextmenu',
-        handleContentWidgetEvents,
-        true
-      );
-      document.removeEventListener(
-        'touchstart',
-        handleContentWidgetEvents,
-        true
-      );
-      document.removeEventListener(
-        'touchmove',
-        handleContentWidgetEvents,
-        true
-      );
-      document.removeEventListener('touchend', handleContentWidgetEvents, true);
       window.removeEventListener('resize', setHtmlHeight);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dailyCodingChallengeLanguage]);
 
   const initializeComponent = (title: string): void => {
     initConsole('');
@@ -381,6 +364,7 @@ function ShowClassic({
       title,
       challengeType,
       helpCategory,
+      description,
       ...challengePaths
     });
     challengeMounted(challengeMeta.id);
@@ -401,6 +385,8 @@ function ShowClassic({
             description={description}
             instructions={instructions}
             superBlock={superBlock}
+            challengeId={id}
+            block={block}
           />
         }
         challengeTitle={
@@ -414,6 +400,7 @@ function ShowClassic({
         instructionsPanelRef={instructionsPanelRef}
         toolPanel={toolPanel}
         hasDemo={hasDemo}
+        showSidePanelTests={showSidePanelTests}
       />
     );
   };
@@ -438,10 +425,17 @@ function ShowClassic({
           title={title}
           usesMultifileEditor={usesMultifileEditor}
           showProjectPreview={demoType === 'onLoad'}
+          showIndependentLowerJaw={showIndependentLowerJaw}
         />
       )
     );
   };
+
+  const usesTerminal =
+    challengeType === challengeTypes.python ||
+    challengeType === challengeTypes.multifilePythonCertProject ||
+    challengeType === challengeTypes.pyLab ||
+    challengeType === challengeTypes.dailyChallengePy;
 
   return (
     <Hotkeys
@@ -451,10 +445,11 @@ function ShowClassic({
       instructionsPanelRef={instructionsPanelRef}
       usesMultifileEditor={usesMultifileEditor}
       editorRef={editorRef}
+      showIndependentLowerJaw={showIndependentLowerJaw}
     >
-      <LearnLayout hasEditableBoundaries={hasEditableBoundaries}>
+      <LearnLayout>
         <Helmet title={windowTitle} />
-        {isMobile && (
+        {isMobile ? (
           <MobileLayout
             editor={renderEditor({
               isMobileLayout: true,
@@ -485,9 +480,9 @@ function ShowClassic({
             }
             updateUsingKeyboardInTablist={updateUsingKeyboardInTablist}
             usesMultifileEditor={usesMultifileEditor}
+            usesTerminal={usesTerminal}
           />
-        )}
-        {!isMobile && (
+        ) : (
           <DesktopLayout
             challengeFiles={challengeFiles}
             challengeType={challengeType}
@@ -498,9 +493,12 @@ function ShowClassic({
             hasEditableBoundaries={hasEditableBoundaries}
             hasPreview={hasPreview}
             instructions={renderInstructionsPanel({
-              toolPanel: <ToolPanel guideUrl={guideUrl} videoUrl={videoUrl} />,
+              toolPanel: null,
               hasDemo: demoType === 'onClick'
             })}
+            isDailyCodingChallenge={isDailyCodingChallenge}
+            dailyCodingChallengeLanguage={dailyCodingChallengeLanguage}
+            setDailyCodingChallengeLanguage={setDailyCodingChallengeLanguage}
             isFirstStep={isFirstStep}
             layoutState={layout}
             notes={notes}
@@ -519,12 +517,22 @@ function ShowClassic({
             }
             windowTitle={windowTitle}
             startWithConsoleShown={openConsole}
+            showIndependentLowerJaw={showIndependentLowerJaw}
           />
         )}
         <CompletionModal />
-        <HelpModal challengeTitle={title} challengeBlock={blockName} />
+        <HelpModal
+          challengeTitle={title}
+          challengeBlock={block}
+          superBlock={superBlock}
+          guideUrl={guideUrl}
+          videoUrl={videoUrl}
+        />
         <VideoModal videoUrl={videoUrl} />
-        <ResetModal challengeType={challengeType} />
+        <ResetModal
+          saveSubmissionToDB={saveSubmissionToDB}
+          challengeTitle={title}
+        />
         <ProjectPreviewModal
           challengeData={challengeData}
           closeText={t('buttons.start-coding')}
@@ -535,6 +543,7 @@ function ShowClassic({
           }
         />
         <ShortcutsModal />
+        <MobileAppModal superBlock={superBlock} />
       </LearnLayout>
     </Hotkeys>
   );
@@ -564,14 +573,12 @@ export const query = graphql`
         forumTopicId
         hooks {
           beforeAll
+          beforeEach
+          afterEach
+          afterAll
         }
         fields {
-          blockName
           slug
-          tests {
-            text
-            testString
-          }
         }
         required {
           link
@@ -587,6 +594,11 @@ export const query = graphql`
           tail
           editableRegionBoundaries
           history
+        }
+        saveSubmissionToDB
+        tests {
+          text
+          testString
         }
       }
     }

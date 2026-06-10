@@ -9,7 +9,7 @@ import { connect } from 'react-redux';
 import { bindActionCreators } from 'redux';
 import type { Dispatch } from 'redux';
 import { createSelector } from 'reselect';
-import { Container, Col, Alert, Row, Button, Spacer } from '@freecodecamp/ui';
+import { Container, Col, Callout, Row, Button, Spacer } from '@freecodecamp/ui';
 import { micromark } from 'micromark';
 
 // Local Utilities
@@ -32,7 +32,6 @@ import {
   updateChallengeMeta,
   openModal,
   closeModal,
-  submitChallenge,
   setUserCompletedExam,
   updateSolutionFormValues,
   initTests
@@ -60,6 +59,7 @@ import FinishExamModal from './components/finish-exam-modal';
 import ExamResults from './components/exam-results';
 import MissingPrerequisites from './components/missing-prerequisites';
 import FoundationalCSharpSurveyAlert from './components/foundational-c-sharp-survey-alert';
+import { useSubmit } from '../utils/fetch-all-curriculum-data';
 
 import './exam.css';
 
@@ -101,7 +101,6 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
       stopExam,
       setUserCompletedExam,
       clearExamResults,
-      submitChallenge,
       initTests,
       updateChallengeMeta,
       updateSolutionFormValues
@@ -132,7 +131,6 @@ interface ShowExamProps {
   t: TFunction;
   startExam: () => void;
   stopExam: () => void;
-  submitChallenge: () => void;
   setUserCompletedExam: (arg0: UserExam) => void;
   updateChallengeMeta: (arg0: ChallengeMeta) => void;
 }
@@ -149,7 +147,6 @@ function ShowExam(props: ShowExamProps) {
           block,
           dashedName,
           description,
-          fields: { blockName },
           instructions,
           prerequisites,
           superBlock,
@@ -172,6 +169,8 @@ function ShowExam(props: ShowExamProps) {
 
   const container = useRef<HTMLElement>(null);
 
+  const submitChallenge = useSubmit();
+
   const [examTimeInSeconds, setExamTimeInSeconds] = useState(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [generatedExamQuestions, setGeneratedExamQuestions] = useState<
@@ -186,12 +185,7 @@ function ShowExam(props: ShowExamProps) {
       challengeMounted,
       data: {
         challengeNode: {
-          challenge: {
-            fields: { tests },
-            challengeType,
-            helpCategory,
-            title
-          }
+          challenge: { tests, challengeType, helpCategory, description, title }
         }
       },
       pageContext: { challengeMeta },
@@ -207,11 +201,14 @@ function ShowExam(props: ShowExamProps) {
       title,
       challengeType,
       helpCategory,
+      description,
       ...challengePaths
     });
     challengeMounted(challengeMeta.id);
 
-    container.current?.focus();
+    // hack to ensure the container is focused after the component mounts
+    // and Gatsby doesn't interfere with the focus.
+    requestAnimationFrame(() => container.current?.focus());
 
     return () => {
       cleanUp();
@@ -313,7 +310,7 @@ function ShowExam(props: ShowExamProps) {
     // TODO: show loader
     cleanUp();
 
-    const { setUserCompletedExam, submitChallenge } = props;
+    const { setUserCompletedExam } = props;
 
     setUserCompletedExam({ userExamQuestions, examTimeInSeconds });
     submitChallenge();
@@ -333,7 +330,7 @@ function ShowExam(props: ShowExamProps) {
       stopExam
     } = props;
     stopExam();
-    void navigate(blockHashSlug);
+    void navigate(blockHashSlug || '/learn');
   };
 
   let missingPrerequisites: PrerequisiteChallenge[] = [];
@@ -502,9 +499,9 @@ function ShowExam(props: ShowExamProps) {
               <Spacer size='m' />
 
               {qualifiedForExam ? (
-                <Alert variant='info'>
+                <Callout variant='note' label={t('misc.note')}>
                   <p>{t('learn.exam.qualified')}</p>
-                </Alert>
+                </Callout>
               ) : !prerequisitesComplete ? (
                 <MissingPrerequisites
                   missingPrerequisites={missingPrerequisites}
@@ -528,7 +525,11 @@ function ShowExam(props: ShowExamProps) {
               </Button>
             </Col>
             <CompletionModal />
-            <HelpModal challengeTitle={title} challengeBlock={blockName} />
+            <HelpModal
+              challengeTitle={title}
+              challengeBlock={block}
+              superBlock={superBlock}
+            />
           </Row>
         </Container>
       </LearnLayout>
@@ -554,11 +555,6 @@ export const query = graphql`
         description
         fields {
           blockHashSlug
-          blockName
-          tests {
-            text
-            testString
-          }
         }
         helpCategory
         id
@@ -568,6 +564,10 @@ export const query = graphql`
           title
         }
         superBlock
+        tests {
+          text
+          testString
+        }
         title
         translationPending
       }

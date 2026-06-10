@@ -1,10 +1,10 @@
 import type { FastifyPluginCallback, FastifyRequest } from 'fastify';
-import isEmail from 'validator/lib/isEmail';
+import validator from 'validator';
 
-import { AUTH0_DOMAIN } from '../../utils/env';
-import { auth0Client } from '../../plugins/auth0';
-import { createAccessToken } from '../../utils/tokens';
-import { findOrCreateUser } from '../helpers/auth-helpers';
+import { AUTH0_DOMAIN } from '../../utils/env.js';
+import { auth0Client } from '../../plugins/auth0.js';
+import { createAccessToken } from '../../utils/tokens.js';
+import { findOrCreateUser } from '../helpers/auth-helpers.js';
 
 const getEmailFromAuth0 = async (
   req: FastifyRequest
@@ -43,13 +43,21 @@ export const mobileAuth0Routes: FastifyPluginCallback = (
   fastify.get('/mobile-login', async (req, reply) => {
     const email = await getEmailFromAuth0(req);
 
+    const logger = fastify.log.child({ req, res: reply });
+
+    logger.info('Mobile app login attempt');
+
     if (!email) {
+      logger.error('Could not get email from Auth0 to log in');
+
       return reply.status(401).send({
         message: 'We could not log you in, please try again in a moment.',
         type: 'danger'
       });
     }
-    if (!isEmail(email)) {
+    if (!validator.default.isEmail(email)) {
+      logger.error('Email is incorrectly formatted for login');
+
       return reply.status(400).send({
         message: 'The email is incorrectly formatted',
         type: 'danger'

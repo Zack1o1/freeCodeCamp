@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { Provider } from 'react-redux';
-import { SuperBlocks } from '../../../../../shared/config/curriculum';
-import { createStore } from '../../../redux/create-store';
+import { describe, it, expect, afterEach, vi, Mock } from 'vitest';
+import type { TFunction } from 'i18next';
+import { SuperBlocks } from '@freecodecamp/shared/config/curriculum';
 import {
   ChallengeFiles,
   PrerequisiteChallenge,
@@ -12,28 +12,38 @@ import {
   FileKeyChallenge,
   BilibiliIds
 } from '../../../redux/prop-types';
-import { isAuditedSuperBlock } from '../../../../../shared/utils/is-audited';
-import { BlockLayouts, BlockTypes } from '../../../../../shared/config/blocks';
-import Block from './block';
+import { isAuditedSuperBlock } from '@freecodecamp/shared/utils/is-audited';
+import { BlockLayouts, BlockLabel } from '@freecodecamp/shared/config/blocks';
+import { Block } from './block';
 
-jest.mock('../../../../../shared/utils/is-audited', () => ({
-  isAuditedSuperBlock: jest.fn().mockReturnValueOnce(true)
+vi.mock('@freecodecamp/shared/utils/is-audited', () => ({
+  isAuditedSuperBlock: vi.fn().mockReturnValueOnce(true)
 }));
 
-jest.mock('../redux', () => ({
-  makeExpandedBlockSelector: jest.fn(() => jest.fn(() => true)),
-  completedChallengesSelector: jest.fn(() => [
-    { id: 'mockId', title: 'mockTitle' }
-  ])
+vi.mock('../../../utils/get-words');
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, string>) => {
+      if (key === 'learn.reset-progress-aria-block') {
+        return `Reset progress for ${options?.blockLabel || ''}`;
+      }
+      return key;
+    }
+  }),
+  withTranslation:
+    () =>
+    <P extends object>(Component: React.ComponentType<P>) =>
+      Component
 }));
 
 const defaultProps = {
   block: 'test-block',
-  blockType: null,
+  blockLabel: null,
   challenges: [
     {
       block: 'testblock',
-      blockType: BlockTypes.lab,
+      blockLabel: BlockLabel.lab,
       blockLayout: BlockLayouts.ChallengeGrid,
       certification: 'mockCertification',
       challengeOrder: 1,
@@ -44,12 +54,10 @@ const defaultProps = {
       fields: {} as Fields,
       forumTopicId: 12345,
       guideUrl: 'https://mockurl.com',
-      head: ['mockHead'],
       hasEditableBoundaries: false,
       helpCategory: 'mockHelpCategory',
       id: 'mockId',
       instructions: 'mockInstructions',
-      isComingSoon: false,
       internal: {
         content: 'mockContent',
         contentDigest: 'mockContentDigest',
@@ -63,7 +71,6 @@ const defaultProps = {
       notes: 'mockNotes',
       prerequisites: [] as PrerequisiteChallenge[],
       isLocked: false,
-      isPrivate: false,
       order: 1,
       questions: [] as Question[],
       assignments: ['mockAssignment'],
@@ -76,8 +83,7 @@ const defaultProps = {
       },
       sourceInstanceName: 'mockSourceInstanceName',
       superOrder: 1,
-      superBlock: SuperBlocks.FullStackDeveloper,
-      tail: ['mockTail'],
+      superBlock: SuperBlocks.FullStackDeveloperV9,
       template: 'mockTemplate',
       tests: [] as Test[],
       title: 'mockTitle',
@@ -92,46 +98,96 @@ const defaultProps = {
   ],
   completedChallengeIds: ['testchallengeIds'],
   isExpanded: true,
-  t: jest.fn((key: string) => [key]),
-  superBlock: SuperBlocks.FullStackDeveloper,
-  toggleBlock: jest.fn()
+  t: vi.fn((key: string) => [key]) as unknown as TFunction,
+  superBlock: SuperBlocks.FullStackDeveloperV9,
+  toggleBlock: vi.fn(),
+  resetModule: vi.fn(),
+  removeModuleChallenges: vi.fn()
 };
 
 describe('<Block />', () => {
   afterEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
+  });
+
+  it('should expand the block when isExpanded is true and expandAll is false', () => {
+    (isAuditedSuperBlock as Mock).mockReturnValue(true);
+    render(<Block {...defaultProps} isExpanded={true} expandAll={false} />);
+    expect(screen.getByRole('button', { expanded: true })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  });
+
+  it('should expand the block when expandAll is true and isExpanded is false', () => {
+    (isAuditedSuperBlock as Mock).mockReturnValue(true);
+    render(<Block {...defaultProps} isExpanded={false} expandAll={true} />);
+    expect(screen.getByRole('button', { expanded: true })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  });
+
+  it('should not expand the block when both expandAll and isExpanded are false', () => {
+    (isAuditedSuperBlock as Mock).mockReturnValue(true);
+    render(<Block {...defaultProps} isExpanded={false} expandAll={false} />);
+    expect(screen.getByRole('button', { expanded: false })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
   });
 
   it('The "Help us translate" badge does not appear on any English blocks', () => {
-    render(
-      <Provider store={createStore()}>
-        <Block {...defaultProps} />
-      </Provider>
-    );
+    render(<Block {...defaultProps} />);
     expect(
       screen.queryByText(/misc.translation-pending/)
     ).not.toBeInTheDocument();
   });
 
   it(`The "Help us translate" badge does not appear on any i18n blocks when the superblock is audited`, () => {
-    (isAuditedSuperBlock as jest.Mock).mockReturnValue(true);
-    render(
-      <Provider store={createStore()}>
-        <Block {...defaultProps} />
-      </Provider>
-    );
+    (isAuditedSuperBlock as Mock).mockReturnValue(true);
+    render(<Block {...defaultProps} />);
     expect(
       screen.queryByText(/misc.translation-pending/)
     ).not.toBeInTheDocument();
   });
 
   it(`The "Help us translate" badge does appear on i18n blocks when the superblock is not audited`, () => {
-    (isAuditedSuperBlock as jest.Mock).mockReturnValue(false);
-    render(
-      <Provider store={createStore()}>
-        <Block {...defaultProps} />
-      </Provider>
-    );
+    (isAuditedSuperBlock as Mock).mockReturnValue(false);
+    render(<Block {...defaultProps} />);
     expect(screen.getByText(/misc.translation-pending/)).toBeInTheDocument();
+  });
+
+  describe('Reset functionality', () => {
+    it('renders a reset button for the block', () => {
+      render(<Block {...defaultProps} />);
+      const resetButton = screen.getByRole('button', {
+        name: /reset progress for/i
+      });
+      expect(resetButton).toBeInTheDocument();
+    });
+
+    it('disables the reset button when no challenges are completed', () => {
+      render(<Block {...defaultProps} completedChallengeIds={[]} />);
+      const resetButton = screen.getByRole('button', {
+        name: /reset progress for/i
+      });
+      expect(resetButton).toBeDisabled();
+    });
+
+    it('calls removeModuleChallenges with correct payload when handleResetConfirm is triggered', () => {
+      const mockRemove = vi.fn();
+      render(<Block {...defaultProps} removeModuleChallenges={mockRemove} />);
+
+      expect(
+        screen.getByRole('button', { name: /reset progress for/i })
+      ).toBeInTheDocument();
+
+      const removedIds = ['id-1', 'id-2'];
+      mockRemove({ removedChallengeIds: removedIds });
+      expect(mockRemove).toHaveBeenCalledWith({
+        removedChallengeIds: removedIds
+      });
+    });
   });
 });

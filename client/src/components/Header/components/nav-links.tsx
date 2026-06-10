@@ -152,6 +152,11 @@ function NavLinks({
           {t('buttons.curriculum')}
         </Link>
       </li>
+      <li key='catalog'>
+        <Link className='nav-link' onKeyDown={handleMenuKeyDown} to='/catalog'>
+          {t('buttons.catalog')}
+        </Link>
+      </li>
       {currentUserName && (
         <>
           <li key='profile'>
@@ -246,7 +251,7 @@ function NavLinks({
         <button
           aria-pressed={theme === LocalStorageThemes.Dark}
           className={'nav-link nav-link-flex'}
-          onClick={toggleTheme}
+          onClick={() => toggleTheme()}
           onKeyDown={currentUserName ? handleMenuKeyDown : handleSignOutKeys}
         >
           <span>{t('settings.labels.night-mode')}</span>

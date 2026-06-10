@@ -18,6 +18,7 @@ const toneUrls = {
   [FlashMessages.CertClaimSuccess]:
     'https://campfire-mode.freecodecamp.org/cert.mp3',
   [FlashMessages.CertificateMissing]: TRY_AGAIN,
+  [FlashMessages.CertsClaimable]: CHAL_COMP,
   [FlashMessages.CertsPrivate]: TRY_AGAIN,
   [FlashMessages.ChallengeSaveTooBig]: TRY_AGAIN,
   [FlashMessages.ChallengeSubmitTooBig]: TRY_AGAIN,
@@ -25,6 +26,8 @@ const toneUrls = {
   [FlashMessages.CodeSaveError]: TRY_AGAIN,
   [FlashMessages.CodeSaveLess]: TRY_AGAIN,
   [FlashMessages.CompleteProjectFirst]: TRY_AGAIN,
+  [FlashMessages.CourseUrlCopied]: CHAL_COMP,
+  [FlashMessages.CourseUrlCopyError]: TRY_AGAIN,
   [FlashMessages.DeleteTokenErr]: TRY_AGAIN,
   [FlashMessages.EmailValid]: CHAL_COMP,
   [FlashMessages.GenerateExamError]: TRY_AGAIN,
@@ -80,9 +83,14 @@ const toneUrls = {
   [FlashMessages.UsernameUpdated]: CHAL_COMP,
   [FlashMessages.UsernameUsed]: TRY_AGAIN,
   [FlashMessages.UserNotCertified]: TRY_AGAIN,
+  [FlashMessages.UserTokenCopied]: CHAL_COMP,
+  [FlashMessages.UserTokenCopyError]: TRY_AGAIN,
+  [FlashMessages.UserTokenGenerated]: CHAL_COMP,
+  [FlashMessages.UserTokenGenerateError]: TRY_AGAIN,
   [FlashMessages.WrongName]: TRY_AGAIN,
   [FlashMessages.WrongUpdating]: TRY_AGAIN,
-  [FlashMessages.WentWrong]: TRY_AGAIN
+  [FlashMessages.WentWrong]: TRY_AGAIN,
+  [FlashMessages.UserFetchError]: TRY_AGAIN
 } as const;
 
 type ToneStates = keyof typeof toneUrls;

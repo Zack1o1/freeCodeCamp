@@ -3,9 +3,19 @@ import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
 import { type user } from '@prisma/client';
 
-import { JWT_SECRET } from '../utils/env';
-import { type Token, isExpired } from '../utils/tokens';
-import { ERRORS } from '../exam-environment/utils/errors';
+import { JWT_SECRET } from '../utils/env.js';
+import { type Token, isExpired } from '../utils/tokens.js';
+import { ERRORS } from '../exam-environment/utils/errors.js';
+
+type AuthResult =
+  | {
+      message: string;
+      user?: never;
+    }
+  | {
+      message?: never;
+      user: user;
+    };
 
 declare module 'fastify' {
   interface FastifyReply {
@@ -16,10 +26,11 @@ declare module 'fastify' {
     // TODO: is the full user the correct type here?
     user: user | null;
     accessDeniedMessage: { type: 'info'; content: string } | null;
+    getAuthedUser: () => Promise<AuthResult>;
   }
 
   interface FastifyInstance {
-    authorize: (req: FastifyRequest, reply: FastifyReply) => void;
+    authorize: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     authorizeExamEnvironmentToken: (
       req: FastifyRequest,
       reply: FastifyReply
@@ -28,13 +39,26 @@ declare module 'fastify' {
 }
 
 const auth: FastifyPluginCallback = (fastify, _options, done) => {
+  const cookieOpts = {
+    httpOnly: true,
+    secure: true,
+    maxAge: 2592000 // thirty days in seconds
+  };
   fastify.decorateReply('setAccessTokenCookie', function (accessToken: Token) {
     const signedToken = jwt.sign({ accessToken }, JWT_SECRET);
-    void this.setCookie('jwt_access_token', signedToken, {
-      httpOnly: false,
-      secure: false,
-      maxAge: accessToken.ttl
-    });
+    void this.setCookie('jwt_access_token', signedToken, cookieOpts);
+  });
+
+  // update existing jwt_access_token cookie properties
+  fastify.addHook('onRequest', (req, reply, done) => {
+    const rawCookie = req.cookies['jwt_access_token'];
+    if (rawCookie) {
+      const jwtAccessToken = req.unsignCookie(rawCookie);
+      if (jwtAccessToken.valid) {
+        reply.setCookie('jwt_access_token', jwtAccessToken.value, cookieOpts);
+      }
+    }
+    done();
   });
 
   fastify.decorateRequest('accessDeniedMessage', null);
@@ -47,32 +71,49 @@ const auth: FastifyPluginCallback = (fastify, _options, done) => {
   const setAccessDenied = (req: FastifyRequest, content: string) =>
     (req.accessDeniedMessage = { type: 'info', content });
 
-  const handleAuth = async (req: FastifyRequest) => {
-    const tokenCookie = req.cookies.jwt_access_token;
-    if (!tokenCookie) return setAccessDenied(req, TOKEN_REQUIRED);
+  async function getAuthedUser(this: FastifyRequest): Promise<AuthResult> {
+    const tokenCookie = this.cookies.jwt_access_token;
+    if (!tokenCookie) return { message: TOKEN_REQUIRED };
 
-    const unsignedToken = req.unsignCookie(tokenCookie);
-    if (!unsignedToken.valid) return setAccessDenied(req, TOKEN_REQUIRED);
+    const unsignedToken = this.unsignCookie(tokenCookie);
+    if (!unsignedToken.valid) return { message: TOKEN_REQUIRED };
 
     const jwtAccessToken = unsignedToken.value;
 
     try {
       jwt.verify(jwtAccessToken, JWT_SECRET);
     } catch {
-      return setAccessDenied(req, TOKEN_INVALID);
+      return { message: TOKEN_INVALID };
     }
 
     const { accessToken } = jwt.decode(jwtAccessToken) as {
       accessToken: Token;
     };
 
-    if (isExpired(accessToken)) return setAccessDenied(req, TOKEN_EXPIRED);
+    if (isExpired(accessToken)) return { message: TOKEN_EXPIRED };
+    // We're using token.userId since it's possible for the user record to be
+    // malformed and for prisma to throw while trying to find the user.
+    fastify.Sentry?.setUser({
+      id: accessToken.userId
+    });
 
     const user = await fastify.prisma.user.findUnique({
       where: { id: accessToken.userId }
     });
-    if (!user) return setAccessDenied(req, TOKEN_INVALID);
-    req.user = user;
+
+    return user ? { user } : { message: TOKEN_INVALID };
+  }
+
+  fastify.decorateRequest('getAuthedUser', getAuthedUser);
+
+  const handleAuth = async (req: FastifyRequest): Promise<void> => {
+    const { message, user } = await req.getAuthedUser();
+
+    if (user) {
+      req.user = user;
+    } else {
+      setAccessDenied(req, message);
+    }
   };
 
   async function handleExamEnvironmentTokenAuth(
@@ -138,10 +179,19 @@ const auth: FastifyPluginCallback = (fastify, _options, done) => {
       });
 
     if (!token) {
-      return {
-        message: 'Token not found'
-      };
+      void reply.code(403);
+      return reply.send(
+        ERRORS.FCC_ENOENT_EXAM_ENVIRONMENT_AUTHORIZATION_TOKEN(
+          'Provided token is revoked.'
+        )
+      );
     }
+    // We're using token.userId since it's possible for the user record to be
+    // malformed and for prisma to throw while trying to find the user.
+
+    fastify.Sentry?.setUser({
+      id: token.userId
+    });
 
     const user = await fastify.prisma.user.findUnique({
       where: { id: token.userId }

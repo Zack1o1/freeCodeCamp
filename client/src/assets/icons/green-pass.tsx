@@ -2,8 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface GreenPassProps
-  extends JSX.IntrinsicAttributes,
-    React.SVGProps<SVGSVGElement> {
+  extends JSX.IntrinsicAttributes, React.SVGProps<SVGSVGElement> {
   hushScreenReaderText?: boolean;
 }
 function GreenPass(props: GreenPassProps): JSX.Element {
@@ -11,6 +10,7 @@ function GreenPass(props: GreenPassProps): JSX.Element {
   const { hushScreenReaderText = false, ...rest } = props;
   return (
     <svg
+      data-testid='green-pass'
       {...(hushScreenReaderText && { 'aria-hidden': true })}
       {...(!hushScreenReaderText && { 'aria-label': t('icons.passed') })}
       height='15'

@@ -6,8 +6,8 @@ import {
   COOKIE_DOMAIN,
   COOKIE_SECRET,
   FREECODECAMP_NODE_ENV
-} from '../utils/env';
-import { CSRF_COOKIE, CSRF_SECRET_COOKIE } from './csrf';
+} from '../utils/env.js';
+import { CSRF_COOKIE, CSRF_SECRET_COOKIE } from './csrf.js';
 
 export { type CookieSerializeOptions } from '@fastify/cookie';
 
@@ -50,6 +50,7 @@ export const unsign = (rawValue: string): UnsignResult => {
  * @param done Callback to signal that the logic has completed.
  */
 const cookies: FastifyPluginCallback = (fastify, _options, done) => {
+  const logger = fastify.log.child({});
   void fastify.register(fastifyCookie, {
     secret: {
       sign,
@@ -71,6 +72,8 @@ const cookies: FastifyPluginCallback = (fastify, _options, done) => {
     void this.clearCookie('jwt_access_token');
     void this.clearCookie(CSRF_SECRET_COOKIE);
     void this.clearCookie(CSRF_COOKIE);
+
+    logger.trace('Clearing cookies for user.');
   });
 
   done();

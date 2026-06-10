@@ -1,6 +1,7 @@
 import cookies from 'browser-cookies';
-import envData from '../../config/env.json';
+import { createApi, fetchBaseQuery, retry } from '@reduxjs/toolkit/query/react';
 
+import envData from '../../config/env.json';
 import type {
   ChallengeFile,
   ChallengeFiles,
@@ -12,7 +13,7 @@ import type {
   SurveyResults,
   User
 } from '../redux/prop-types';
-import { DonationDuration } from '../../../shared/config/donation-settings';
+import { DonationDuration } from '@freecodecamp/shared/config/donation-settings';
 
 const { apiLocation } = envData;
 
@@ -37,10 +38,14 @@ export interface ResponseWithData<T> {
 
 // TODO: Might want to handle flash messages as close to the request as possible
 // to make use of the Response object (message, status, etc)
-async function get<T>(path: string): Promise<ResponseWithData<T>> {
+async function get<T>(
+  path: string,
+  signal?: AbortSignal
+): Promise<ResponseWithData<T>> {
   const response = await fetch(`${base}${path}`, {
     ...defaultOptions,
-    headers: { 'CSRF-Token': getCSRFToken() }
+    headers: { 'CSRF-Token': getCSRFToken() },
+    signal
   });
 
   return combineDataWithResponse(response);
@@ -93,10 +98,6 @@ async function request<T>(
 
 /** GET **/
 
-interface SessionUser {
-  user?: { [username: string]: User };
-}
-
 type CompleteChallengeFromApi = {
   files: Array<Omit<ChallengeFile, 'fileKey'> & { key: string }>;
 } & Omit<CompletedChallenge, 'challengeFiles'>;
@@ -105,26 +106,19 @@ type SavedChallengeFromApi = {
   files: Array<Omit<SavedChallengeFile, 'fileKey'> & { key: string }>;
 } & Omit<SavedChallenge, 'challengeFiles'>;
 
-type ApiSessionResponse = Omit<SessionUser, 'user'>;
-type ApiUser = {
+type ApiUser = Omit<User, 'completedChallenges' | 'savedChallenges'> & {
+  completedChallenges?: CompleteChallengeFromApi[];
+  savedChallenges?: SavedChallengeFromApi[];
+};
+
+type ApiUserResponse = {
   user: {
-    [username: string]: Omit<
-      User,
-      'completedChallenges' & 'savedChallenges'
-    > & {
-      completedChallenges?: CompleteChallengeFromApi[];
-      savedChallenges?: SavedChallengeFromApi[];
-    };
+    [username: string]: ApiUser;
   };
   result?: string;
 };
 
-type UserResponse = {
-  user: { [username: string]: User } | Record<string, never>;
-  result: string | undefined;
-};
-
-function parseApiResponseToClientUser(data: ApiUser): UserResponse {
+function parseApiResponseToClientUser(data: ApiUserResponse): User | null {
   const userData = data.user?.[data?.result ?? ''];
   let completedChallenges: CompletedChallenge[] = [];
   let savedChallenges: SavedChallenge[] = [];
@@ -134,12 +128,9 @@ function parseApiResponseToClientUser(data: ApiUser): UserResponse {
     );
     savedChallenges = mapFilesToChallengeFiles(userData.savedChallenges);
   }
-  return {
-    user: {
-      [data.result ?? '']: { ...userData, completedChallenges, savedChallenges }
-    },
-    result: data.result
-  };
+  return data.result
+    ? { ...userData, completedChallenges, savedChallenges }
+    : null;
 }
 
 // TODO: this at least needs a few aliases so it's human readable
@@ -158,44 +149,41 @@ function mapKeyToFileKey<K>(
   return files.map(({ key, ...rest }) => ({ ...rest, fileKey: key }));
 }
 
-export function getSessionUser(): Promise<ResponseWithData<SessionUser>> {
-  const responseWithData: Promise<
-    ResponseWithData<ApiUser & ApiSessionResponse>
-  > = get('/user/get-session-user');
+export function getSessionUser(
+  signal?: AbortSignal
+): Promise<ResponseWithData<User | null>> {
+  const responseWithData: Promise<ResponseWithData<ApiUserResponse>> = get(
+    '/user/session-user',
+    signal
+  );
   // TODO: Once DB is migrated, no longer need to parse `files` -> `challengeFiles` etc.
   return responseWithData.then(({ response, data }) => {
-    const { result, user } = parseApiResponseToClientUser(data);
+    const user = parseApiResponseToClientUser(data);
     return {
       response,
-      data: {
-        result,
-        user
-      }
+      data: user
     };
   });
 }
 
 type UserProfileResponse = {
-  entities: Omit<UserResponse, 'result'>;
+  entities: Omit<ApiUserResponse, 'result'>;
   result: string | undefined;
 };
 export function getUserProfile(
   username: string
-): Promise<ResponseWithData<UserProfileResponse>> {
-  const responseWithData = get<{ entities?: ApiUser; result?: string }>(
-    `/api/users/get-public-profile?username=${username}`
+): Promise<ResponseWithData<User | null>> {
+  const responseWithData = get<UserProfileResponse>(
+    `/users/get-public-profile?username=${username}`
   );
   return responseWithData.then(({ response, data }) => {
-    const { result, user } = parseApiResponseToClientUser({
+    const user = parseApiResponseToClientUser({
       user: data.entities?.user ?? {},
       result: data.result
     });
     return {
       response,
-      data: {
-        entities: { user },
-        result
-      }
+      data: user
     };
   });
 }
@@ -216,13 +204,53 @@ export function getShowCert(
 export function getUsernameExists(
   username: string
 ): Promise<ResponseWithData<boolean>> {
-  return get(`/api/users/exists?username=${username}`);
+  return get(`/users/exists?username=${username}`);
 }
 
 export function getGenerateExam(
   challengeId: string
 ): Promise<GenerateExamResponseWithData> {
   return get(`/exam/${challengeId}`);
+}
+
+export interface Exam {
+  id: string;
+  config: {
+    name: string;
+  };
+}
+
+export type Attempt = {
+  id: string;
+  examId: string;
+  // ISO 8601 string
+  startTime: string;
+  questionSets: unknown[];
+} & (
+  | {
+      result: null;
+      status:
+        | 'InProgress'
+        | 'Expired'
+        | 'PendingModeration'
+        | 'Denied'
+        | 'AwaitingChallenges';
+    }
+  | {
+      status: 'Approved';
+      result: {
+        passingPercent: number;
+        score: number;
+      };
+    }
+);
+
+export function getExams(): Promise<ResponseWithData<{ exams: Exam[] }>> {
+  return get('/user/exam-environment/exams');
+}
+
+export function getExamAttempts(): Promise<ResponseWithData<Attempt[]>> {
+  return get('/user/exam-environment/exam/attempts');
 }
 
 /** POST **/
@@ -235,6 +263,21 @@ interface Donation {
   subscriptionId: string;
   customerId: string;
   startDate: Date;
+}
+
+interface SocratesHintPayload {
+  userInput: string;
+  seed: string;
+  description: string;
+  hints: Array<{ text: string; failed?: boolean }>;
+}
+
+interface SocratesHintResponse {
+  hint?: string;
+  error?: string;
+  type?: string;
+  attempts?: number;
+  limit?: number;
 }
 // TODO: Verify if the body has and needs this Donation type. The api seems to
 // just need the body to exist, but doesn't seem to use the properties.
@@ -262,6 +305,11 @@ export function generateExamToken(): Promise<
   ResponseWithData<ExamTokenResponse>
 > {
   return post('/user/exam-environment/token', {});
+}
+export function getSocratesHint(
+  body: SocratesHintPayload
+): Promise<ResponseWithData<SocratesHintResponse>> {
+  return put('/socrates/get-hint', body);
 }
 
 type PaymentIntentResponse = Promise<
@@ -307,6 +355,12 @@ export function postResetProgress(): Promise<ResponseWithData<void>> {
   return post('/account/reset-progress', {});
 }
 
+export function deleteResetModule(body: {
+  blockIds: string[];
+}): Promise<ResponseWithData<{ removedChallengeIds: string[] }>> {
+  return deleteRequest('/account/reset-module', body);
+}
+
 export function postUserToken(): Promise<ResponseWithData<void>> {
   return post('/user/user-token', {});
 }
@@ -321,7 +375,7 @@ export function postSaveChallenge(body: {
   id: string;
   files: ChallengeFiles;
 }): Promise<ResponseWithData<void>> {
-  return post('/save-challenge', body);
+  return post('/encoded/save-challenge', body);
 }
 
 export function postSubmitSurvey(body: {
@@ -374,10 +428,16 @@ export function putUpdateMyHonesty(
   return put('/update-my-honesty', update);
 }
 
-export function putUpdateMyQuincyEmail(
-  update: Record<string, string>
-): Promise<ResponseWithData<void>> {
+export function putUpdateMyQuincyEmail(update: {
+  sendQuincyEmail: boolean;
+}): Promise<ResponseWithData<void>> {
   return put('/update-my-quincy-email', update);
+}
+
+export function putUpdateMySocrates(update: {
+  socrates: boolean;
+}): Promise<ResponseWithData<void>> {
+  return put('/update-socrates', { socrates: update.socrates });
 }
 
 export function putUpdateMyPortfolio(
@@ -386,10 +446,10 @@ export function putUpdateMyPortfolio(
   return put('/update-my-portfolio', update);
 }
 
-export function putUserAcceptsTerms(
-  quincyEmails: boolean
+export function putUpdateMyExperience(
+  update: Record<string, string>
 ): Promise<ResponseWithData<void>> {
-  return put('/update-privacy-terms', { quincyEmails });
+  return put('/update-my-experience', update);
 }
 
 export function putUserUpdateEmail(
@@ -412,3 +472,85 @@ export function deleteUserToken(): Promise<ResponseWithData<void>> {
 export function deleteMsUsername(): Promise<ResponseWithData<void>> {
   return deleteRequest('/user/ms-username', {});
 }
+
+/** RTK */
+
+export interface ExamEnvironmentChallenge {
+  id: string;
+  examId: string;
+  challengeId: string;
+}
+
+export type GetExamsResponse = Array<{
+  id: string;
+  config: {
+    name: string;
+    note: string;
+    totalTimeInS: number;
+    retakeTimeInS: number;
+    passingPercent: number;
+  };
+  canTake: boolean;
+  prerequisites: string[];
+}>;
+
+export const examAttempts = createApi({
+  reducerPath: 'exam-attempts',
+  baseQuery: retry(
+    fetchBaseQuery({
+      baseUrl: apiLocation,
+      prepareHeaders(headers) {
+        headers.set('CSRF-Token', getCSRFToken());
+        return headers;
+      },
+      credentials: 'include'
+    }),
+    // Retry in the case this is the initial request - csrf is not set yet, and initial returns 403
+    { maxRetries: 2 }
+  ),
+  endpoints: build => ({
+    getExamAttemptsByExamId: build.mutation<Attempt[], string>({
+      query: examId => `/user/exam-environment/exams/${examId}/attempts`
+    }),
+    getExamIdsByChallengeId: build.query<ExamEnvironmentChallenge[], string>({
+      query: challengeId =>
+        `/exam-environment/exam-challenge?challengeId=${challengeId}`
+    }),
+    getExams: build.query<GetExamsResponse, void>({
+      query: () => '/user/exam-environment/exams'
+    })
+  })
+});
+
+export const examEnvironmentAuthorizationTokenApi = createApi({
+  reducerPath: 'exam-environment-authorization-token',
+  baseQuery: retry(
+    fetchBaseQuery({
+      baseUrl: apiLocation,
+      prepareHeaders(headers) {
+        headers.set('CSRF-Token', getCSRFToken());
+        return headers;
+      },
+      credentials: 'include'
+    }),
+    // Retry in the case this is the initial request - csrf is not set yet, and initial returns 403
+    { maxRetries: 2 }
+  ),
+  endpoints: build => ({
+    postGenerateExamEnvironmentAuthorizationToken: build.mutation<
+      ExamTokenResponse,
+      void
+    >({
+      query: () => ({
+        url: `/user/exam-environment/token`,
+        method: 'POST'
+      })
+    }),
+    getExamEnvironmentAuthorizationToken: build.query<ExamTokenResponse, void>({
+      query: () => ({
+        url: `/user/exam-environment/token`,
+        method: 'GET'
+      })
+    })
+  })
+});

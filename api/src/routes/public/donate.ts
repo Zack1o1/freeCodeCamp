@@ -1,14 +1,14 @@
 import { type FastifyPluginCallbackTypebox } from '@fastify/type-provider-typebox';
 import Stripe from 'stripe';
 
-import { STRIPE_SECRET_KEY } from '../../utils/env';
+import { STRIPE_SECRET_KEY } from '../../utils/env.js';
 import {
   donationSubscriptionConfig,
   allStripeProductIdsArray
-} from '../../../../shared/config/donation-settings';
-import * as schemas from '../../schemas';
-import { inLastFiveMinutes } from '../../utils/validate-donation';
-import { findOrCreateUser } from '../helpers/auth-helpers';
+} from '@freecodecamp/shared/config/donation-settings';
+import * as schemas from '../../schemas.js';
+import { inLastFiveMinutes } from '../../utils/validate-donation.js';
+import { findOrCreateUser } from '../helpers/auth-helpers.js';
 
 /**
  * Plugin for public donation endpoints.
@@ -35,6 +35,8 @@ export const chargeStripeRoute: FastifyPluginCallbackTypebox = (
     },
     async (req, reply) => {
       const { email, name, amount, duration } = req.body;
+      const log = fastify.log.child({ req, email, amount, duration });
+      log.debug('Creating Stripe payment intent');
 
       if (!donationSubscriptionConfig.plans[duration].includes(amount)) {
         void reply.code(400);
@@ -72,6 +74,7 @@ export const chargeStripeRoute: FastifyPluginCallbackTypebox = (
         ) {
           const clientSecret =
             stripeSubscription.latest_invoice.payment_intent.client_secret;
+          log.info('Successfully created payment intent');
           return reply.send({
             subscriptionId: stripeSubscription.id,
             clientSecret
@@ -80,7 +83,7 @@ export const chargeStripeRoute: FastifyPluginCallbackTypebox = (
           throw new Error('Stripe payment intent client secret is missing');
         }
       } catch (error) {
-        fastify.log.error(error);
+        log.error(error, 'Failed to create payment intent');
         fastify.Sentry.captureException(error);
         void reply.code(500);
         return reply.send({
@@ -98,6 +101,14 @@ export const chargeStripeRoute: FastifyPluginCallbackTypebox = (
     async (req, reply) => {
       try {
         const { email, amount, duration, subscriptionId } = req.body;
+        const log = fastify.log.child({
+          req,
+          email,
+          amount,
+          duration,
+          subscriptionId
+        });
+        log.debug('Processing Stripe charge');
 
         const subscription =
           await stripe.subscriptions.retrieve(subscriptionId);
@@ -111,50 +122,69 @@ export const chargeStripeRoute: FastifyPluginCallbackTypebox = (
           productId && allStripeProductIdsArray.includes(productId);
         const isValidCustomer = typeof subscription.customer === 'string';
 
-        if (!isSubscriptionActive)
+        if (!isSubscriptionActive) {
+          log.warn(
+            { status: subscription.status },
+            'Invalid subscription status'
+          );
           throw new Error(
             `Stripe subscription information is invalid: ${subscriptionId}`
           );
-        if (!isProductIdValid)
-          throw new Error(`Product ID is invalid: ${subscriptionId}`);
-        if (!isStartedRecently)
-          throw new Error(`Subscription is not recent: ${subscriptionId}`);
-        if (!isValidCustomer)
-          throw new Error(`Customer ID is invalid: ${subscriptionId}`);
-        else {
-          // TODO(Post-MVP) new users should not be created if user is not found
-          const user = await findOrCreateUser(fastify, email);
-          const donation = {
-            userId: user.id,
-            email,
-            amount,
-            duration,
-            provider: 'stripe',
-            subscriptionId,
-            customerId: subscription.customer as string,
-            // TODO(Post-MVP) migrate to startDate: new Date()
-            startDate: {
-              date: new Date().toISOString(),
-              when: new Date().toISOString().replace(/.$/, '+00:00')
-            }
-          };
-
-          await fastify.prisma.donation.create({
-            data: donation
-          });
-
-          await fastify.prisma.user.update({
-            where: { id: user.id },
-            data: {
-              isDonating: true
-            }
-          });
-          return reply.send({
-            isDonating: true
-          });
         }
+        if (!isProductIdValid) {
+          log.warn({ productId }, 'Invalid product ID');
+          throw new Error(`Product ID is invalid: ${subscriptionId}`);
+        }
+        if (!isStartedRecently) {
+          log.warn(
+            { startTime: subscription.current_period_start },
+            'Subscription not recent'
+          );
+          throw new Error(`Subscription is not recent: ${subscriptionId}`);
+        }
+        if (!isValidCustomer) {
+          log.warn(
+            { customerId: subscription.customer },
+            'Invalid customer ID'
+          );
+          throw new Error(`Customer ID is invalid: ${subscriptionId}`);
+        }
+
+        const user = await findOrCreateUser(fastify, email);
+        log.debug({ userId: user.id }, 'Found or created user');
+
+        const donation = {
+          userId: user.id,
+          email,
+          amount,
+          duration,
+          provider: 'stripe',
+          subscriptionId,
+          customerId: subscription.customer as string,
+          // TODO(Post-MVP) migrate to startDate: new Date()
+          startDate: {
+            date: new Date().toISOString(),
+            when: new Date().toISOString().replace(/.$/, '+00:00')
+          }
+        };
+
+        await fastify.prisma.donation.create({
+          data: donation
+        });
+
+        await fastify.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            isDonating: true
+          }
+        });
+        log.info('Successfully processed donation');
+
+        return reply.send({
+          isDonating: true
+        });
       } catch (error) {
-        fastify.log.error(error);
+        fastify.log.error(error, 'Failed to process Stripe charge');
         fastify.Sentry.captureException(error);
         void reply.code(500);
         return {

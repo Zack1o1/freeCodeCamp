@@ -12,7 +12,7 @@ import {
   defaultDonation,
   DonationAmount,
   type DonationConfig
-} from '../../../../shared/config/donation-settings';
+} from '@freecodecamp/shared/config/donation-settings';
 import { defaultDonationFormState } from '../../redux';
 import { updateDonationFormState, postCharge } from '../../redux/actions';
 import {
@@ -25,7 +25,7 @@ import {
   themeSelector
 } from '../../redux/selectors';
 import { LocalStorageThemes, DonateFormState } from '../../redux/types';
-import type { CompletedChallenge } from '../../redux/prop-types';
+import type { CompletedChallenge, User } from '../../redux/prop-types';
 import { CENTS_IN_DOLLAR, formattedAmountLabel } from './utils';
 import DonateCompletion from './donate-completion';
 import PatreonButton from './patreon-button';
@@ -62,7 +62,7 @@ type PostCharge = (data: {
 type DonateFormProps = {
   postCharge: PostCharge;
   defaultTheme?: LocalStorageThemes;
-  email: string;
+  email?: string;
   handleProcessing?: () => void;
   editAmount?: () => void;
   selectedDonationAmount?: DonationAmount;
@@ -91,7 +91,7 @@ const mapStateToProps = createSelector(
     isSignedIn: DonateFormProps['isSignedIn'],
     isDonating: DonateFormProps['isDonating'],
     donationFormState: DonateFormState,
-    { email }: { email: string },
+    user: User | null,
     completedChallenges: CompletedChallenge[],
     theme: LocalStorageThemes
   ) => ({
@@ -99,7 +99,7 @@ const mapStateToProps = createSelector(
     isDonating,
     showLoading,
     donationFormState,
-    email,
+    email: user?.email,
     completedChallenges,
     theme
   })
@@ -112,7 +112,7 @@ const mapDispatchToProps = {
 
 const PaymentButtonsLoader = () => {
   return (
-    <div className=' donation-completion donation-completion-loading'>
+    <div className='donation-completion donation-completion-loading'>
       <Spinner
         className='script-loading-spinner'
         fadeIn='none'

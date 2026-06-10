@@ -1,28 +1,39 @@
 import React, { Component, ReactNode } from 'react';
-import type { DefaultTFuncReturn, TFunction } from 'i18next';
+import type { TFunction } from 'i18next';
 import { withTranslation } from 'react-i18next';
 import { connect } from 'react-redux';
-import ScrollableAnchor from 'react-scrollable-anchor';
+import { Element } from 'react-scroll';
 import { bindActionCreators, Dispatch } from 'redux';
 import { createSelector } from 'reselect';
 import { Spacer } from '@freecodecamp/ui';
 
-import { challengeTypes } from '../../../../../shared/config/challenge-types';
-import { SuperBlocks } from '../../../../../shared/config/curriculum';
+import { challengeTypes } from '@freecodecamp/shared/config/challenge-types';
+import {
+  chapterBasedSuperBlocks,
+  SuperBlocks
+} from '@freecodecamp/shared/config/curriculum';
 import envData from '../../../../config/env.json';
-import { isAuditedSuperBlock } from '../../../../../shared/utils/is-audited';
+import { isAuditedSuperBlock } from '@freecodecamp/shared/utils/is-audited';
 import Caret from '../../../assets/icons/caret';
 import { Link } from '../../../components/helpers';
 import { completedChallengesSelector } from '../../../redux/selectors';
 import { playTone } from '../../../utils/tone';
 import { makeExpandedBlockSelector, toggleBlock } from '../redux';
-import { isGridBased, isProjectBased } from '../../../utils/curriculum-layout';
-import { BlockLayouts, BlockTypes } from '../../../../../shared/config/blocks';
+import { isProjectBased } from '../../../utils/curriculum-layout';
+import { removeModuleChallenges } from '../../../redux/actions';
+import {
+  BlockLayouts,
+  BlockLabel as BlockLabelType
+} from '@freecodecamp/shared/config/blocks';
 import CheckMark from './check-mark';
-import Challenges from './challenges';
+import {
+  GridMapChallenges,
+  ChallengesList,
+  ChallengesWithDialogues
+} from './challenges';
 import BlockLabel from './block-label';
-import BlockIntros from './block-intros';
 import BlockHeader from './block-header';
+import ResetProgressModal from './reset-progress-modal';
 
 import '../intro.css';
 import './block.css';
@@ -39,11 +50,11 @@ const mapStateToProps = (state: unknown, ownProps: { block: string }) => {
       isExpanded,
       completedChallengeIds: completedChallenges.map(({ id }) => id)
     })
-  )(state as Record<string, unknown>);
+  )(state);
 };
 
 const mapDispatchToProps = (dispatch: Dispatch) =>
-  bindActionCreators({ toggleBlock }, dispatch);
+  bindActionCreators({ toggleBlock, removeModuleChallenges }, dispatch);
 
 interface ChallengeInfo {
   id: string;
@@ -57,21 +68,39 @@ interface ChallengeInfo {
 
 interface BlockProps {
   block: string;
-  blockType: BlockTypes | null;
+  blockLabel: BlockLabelType | null;
   challenges: ChallengeInfo[];
   completedChallengeIds: string[];
   isExpanded: boolean;
   superBlock: SuperBlocks;
   t: TFunction;
   toggleBlock: typeof toggleBlock;
+  removeModuleChallenges: typeof removeModuleChallenges;
+  accordion?: boolean;
+  /**
+   * When true, expands all chapters and modules and hides those with no matching challenges.
+   * Used during search/filter.
+   */
+  expandAll?: boolean;
 }
 
-class Block extends Component<BlockProps> {
+interface BlockState {
+  showResetModal: boolean;
+}
+
+export class Block extends Component<BlockProps, BlockState> {
   static displayName: string;
   constructor(props: BlockProps) {
     super(props);
 
+    this.state = {
+      showResetModal: false
+    };
     this.handleBlockClick = this.handleBlockClick.bind(this);
+    this.handleChallengeClick = this.handleChallengeClick.bind(this);
+    this.handleResetClick = this.handleResetClick.bind(this);
+    this.handleResetConfirm = this.handleResetConfirm.bind(this);
+    this.handleResetModalClose = this.handleResetModalClose.bind(this);
   }
 
   handleBlockClick = (): void => {
@@ -80,16 +109,42 @@ class Block extends Component<BlockProps> {
     toggleBlock(block);
   };
 
+  handleChallengeClick = (): void => {
+    const { block } = this.props;
+    const dashedBlock = block
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+    window.history.pushState(null, '', `#${dashedBlock}`);
+  };
+
+  handleResetClick = (): void => {
+    this.setState({ showResetModal: true });
+  };
+
+  handleResetConfirm = (removedChallengeIds: string[]): void => {
+    const { removeModuleChallenges } = this.props;
+    removeModuleChallenges({ removedChallengeIds });
+  };
+
+  handleResetModalClose = (): void => {
+    this.setState({ showResetModal: false });
+  };
+
   render(): ReactNode {
     const {
       block,
-      blockType,
+      blockLabel,
       completedChallengeIds,
       challenges,
-      isExpanded,
+      isExpanded: isExpandedProp,
       superBlock,
-      t
+      t,
+      accordion = false,
+      expandAll = false
     } = this.props;
+
+    const isExpanded = expandAll || isExpandedProp;
 
     let completedCount = 0;
     let stepNumber = 0;
@@ -115,19 +170,12 @@ class Block extends Component<BlockProps> {
       return isProjectBased(challenge.challengeType, block);
     });
 
-    const isGridSuperBlock = challenges.some(challenge => {
-      return isGridBased(superBlock, challenge.challengeType);
-    });
-
     const isAudited = isAuditedSuperBlock(curriculumLocale, superBlock);
 
     const blockTitle = t(`intro:${superBlock}.blocks.${block}.title`);
-    // the real type of TFunction is the type below, because intro can be an array of strings
-    // type RealTypeOFTFunction = TFunction & ((key: string) => string[]);
-    // But changing the type will require refactoring that isn't worth it for a wrong type.
-    const blockIntroArr = t<string, DefaultTFuncReturn & string[]>(
-      `intro:${superBlock}.blocks.${block}.intro`
-    );
+    const blockIntroArr = t(`intro:${superBlock}.blocks.${block}.intro`, {
+      returnObjects: true
+    }) as string[];
     const expandText = t('intro:misc-text.expand');
     const collapseText = t('intro:misc-text.collapse');
 
@@ -161,11 +209,11 @@ class Block extends Component<BlockProps> {
      * Example: https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures/#basic-javascript
      */
     const LegacyChallengeListBlock = (
-      <ScrollableAnchor id={block}>
+      <Element name={block}>
         <div className={`block ${isExpanded ? 'open' : ''}`}>
           <div className='block-header'>
             <h3 className='big-block-title'>{blockTitle}</h3>
-            {blockType && <BlockLabel blockType={blockType} />}
+            {blockLabel && <BlockLabel blockLabel={blockLabel} />}
             {!isAudited && (
               <div className='block-cta-wrapper'>
                 <Link
@@ -177,7 +225,6 @@ class Block extends Component<BlockProps> {
               </div>
             )}
           </div>
-          <BlockIntros intros={blockIntroArr} />
           <button
             aria-expanded={isExpanded}
             className='map-title'
@@ -192,10 +239,7 @@ class Block extends Component<BlockProps> {
             </div>
             <div className='map-title-completed course-title'>
               <CheckMark isCompleted={isBlockCompleted} />
-              <span
-                aria-hidden='true'
-                className='map-completed-count'
-              >{`${completedCount}/${challenges.length}`}</span>
+              <span aria-hidden='true'>{`${completedCount}/${challenges.length}`}</span>
               <span className='sr-only'>
                 ,{' '}
                 {t('learn.challenges-completed', {
@@ -206,13 +250,13 @@ class Block extends Component<BlockProps> {
             </div>
           </button>
           {isExpanded && (
-            <Challenges
+            <ChallengesList
               challenges={extendedChallenges}
-              isProjectBlock={isProjectBlock}
+              onChallengeClick={this.handleChallengeClick}
             />
           )}
         </div>
-      </ScrollableAnchor>
+      </Element>
     );
 
     /**
@@ -221,11 +265,11 @@ class Block extends Component<BlockProps> {
      * Example: https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures/#javascript-algorithms-and-data-structures-projects
      */
     const ProjectListBlock = (
-      <ScrollableAnchor id={block}>
+      <Element name={block}>
         <div className='block'>
           <div className='block-header'>
             <h3 className='big-block-title'>{blockTitle}</h3>
-            {blockType && <BlockLabel blockType={blockType} />}
+            {blockLabel && <BlockLabel blockLabel={blockLabel} />}
             {!isAudited && (
               <div className='block-cta-wrapper'>
                 <Link
@@ -237,13 +281,12 @@ class Block extends Component<BlockProps> {
               </div>
             )}
           </div>
-          <BlockIntros intros={blockIntroArr} />
-          <Challenges
+          <ChallengesList
             challenges={extendedChallenges}
-            isProjectBlock={isProjectBlock}
+            onChallengeClick={this.handleChallengeClick}
           />
         </div>
-      </ScrollableAnchor>
+      </Element>
     );
 
     /**
@@ -252,18 +295,22 @@ class Block extends Component<BlockProps> {
      * Example: https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures-v8/#learn-basic-javascript-by-building-a-role-playing-game
      */
     const LegacyChallengeGridBlock = (
-      <ScrollableAnchor id={block}>
+      <Element name={block}>
         <div className={`block block-grid ${isExpanded ? 'open' : ''}`}>
           <BlockHeader
             blockDashed={block}
             blockTitle={blockTitle}
-            blockType={blockType}
+            blockLabel={blockLabel}
             completedCount={completedCount}
             courseCompletionStatus={courseCompletionStatus()}
             handleClick={this.handleBlockClick}
             isCompleted={isBlockCompleted}
             isExpanded={isExpanded}
             percentageCompleted={percentageCompleted}
+            accordion={accordion}
+            blockIntroArr={!accordion ? blockIntroArr : undefined}
+            isResetDisabled={completedCount === 0}
+            onResetClick={this.handleResetClick}
           />
 
           {isExpanded && (
@@ -280,18 +327,69 @@ class Block extends Component<BlockProps> {
               )}
 
               <div id={`${block}-panel`}>
-                <BlockIntros intros={blockIntroArr} />
-                <Challenges
+                <GridMapChallenges
+                  jumpLink={!accordion}
                   challenges={extendedChallenges}
                   isProjectBlock={isProjectBlock}
-                  isGridMap={true}
                   blockTitle={blockTitle}
+                  onChallengeClick={this.handleChallengeClick}
                 />
               </div>
             </>
           )}
         </div>
-      </ScrollableAnchor>
+      </Element>
+    );
+
+    /**
+     * TaskGridBlock displays tasks in a grid and dialogues separately.
+     * This layout is used for task-based blocks.
+     * Example: https://www.freecodecamp.org/learn/a2-english-for-developers/#learn-greetings-in-your-first-day-at-the-office
+     */
+    const TaskGridBlock = (
+      <Element name={block}>
+        <div className={`block block-grid ${isExpanded ? 'open' : ''}`}>
+          <BlockHeader
+            blockDashed={block}
+            blockTitle={blockTitle}
+            blockLabel={blockLabel}
+            completedCount={completedCount}
+            courseCompletionStatus={courseCompletionStatus()}
+            handleClick={this.handleBlockClick}
+            isCompleted={isBlockCompleted}
+            isExpanded={isExpanded}
+            percentageCompleted={percentageCompleted}
+            accordion={accordion}
+            blockIntroArr={!accordion ? blockIntroArr : undefined}
+            isResetDisabled={completedCount === 0}
+            onResetClick={this.handleResetClick}
+          />
+
+          {isExpanded && (
+            <>
+              {!isAudited && (
+                <div className='tags-wrapper'>
+                  <Link
+                    className='cert-tag'
+                    to={t('links:help-translate-link-url')}
+                  >
+                    {t('misc.translation-pending')}
+                  </Link>
+                </div>
+              )}
+
+              <div id={`${block}-panel`}>
+                <ChallengesWithDialogues
+                  challenges={extendedChallenges}
+                  blockTitle={blockTitle}
+                  jumpLink={!accordion}
+                  onChallengeClick={this.handleChallengeClick}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </Element>
     );
 
     /**
@@ -300,7 +398,7 @@ class Block extends Component<BlockProps> {
      * Example: https://www.freecodecamp.org/learn/2022/responsive-web-design/#build-a-survey-form-project
      */
     const LegacyLinkBlock = (
-      <ScrollableAnchor id={block}>
+      <Element name={block}>
         <div className='block block-grid grid-project-block'>
           <div className='tags-wrapper'>
             <span className='cert-tag' aria-hidden='true'>
@@ -319,13 +417,11 @@ class Block extends Component<BlockProps> {
             )}
           </div>
           <div className='title-wrapper map-title'>
-            {blockType && <BlockLabel blockType={blockType} />}
+            {blockLabel && <BlockLabel blockLabel={blockLabel} />}
             <h3 className='block-grid-title'>
               <Link
                 className='block-header'
-                onClick={() => {
-                  this.handleBlockClick();
-                }}
+                onClick={this.handleChallengeClick}
                 to={link}
               >
                 <CheckMark isCompleted={isBlockCompleted} />
@@ -338,33 +434,34 @@ class Block extends Component<BlockProps> {
               </Link>
             </h3>
           </div>
-          <BlockIntros intros={blockIntroArr} />
         </div>
-      </ScrollableAnchor>
+      </Element>
     );
 
     /**
      * AccordionBlock is used as the block layout in new accordion style superblocks.
      */
-    const AccordionBlock = (
+    const AccordionBlock = accordion ? (
       <>
-        <ScrollableAnchor id={block}>
+        <Element name={block}>
           <span className='hide-scrollable-anchor'></span>
-        </ScrollableAnchor>
+        </Element>
         <div
-          className={`block block-grid challenge-grid-block ${isExpanded ? 'open' : ''}`}
+          className={`block block-grid block-grid-no-border challenge-grid-block ${isExpanded ? 'open' : ''}`}
         >
           <BlockHeader
             blockDashed={block}
             blockTitle={blockTitle}
-            blockType={blockType}
+            blockLabel={blockLabel}
             completedCount={completedCount}
             courseCompletionStatus={courseCompletionStatus()}
             handleClick={this.handleBlockClick}
             isCompleted={isBlockCompleted}
             isExpanded={isExpanded}
             percentageCompleted={percentageCompleted}
-            blockIntroArr={blockIntroArr}
+            accordion={accordion}
+            isResetDisabled={completedCount === 0}
+            onResetClick={this.handleResetClick}
           />
 
           {isExpanded && (
@@ -383,12 +480,79 @@ class Block extends Component<BlockProps> {
                 id={`${block}-panel`}
                 className={isGridBlock ? 'challenge-grid-block-panel' : ''}
               >
-                <Challenges
-                  challenges={extendedChallenges}
-                  isProjectBlock={false}
-                  isGridMap={isGridBlock}
-                  blockTitle={blockTitle}
-                />
+                {isGridBlock ? (
+                  <GridMapChallenges
+                    challenges={extendedChallenges}
+                    blockTitle={blockTitle}
+                    isProjectBlock={isProjectBlock}
+                    jumpLink={false}
+                    onChallengeClick={this.handleChallengeClick}
+                  />
+                ) : (
+                  <ChallengesList
+                    challenges={extendedChallenges}
+                    onChallengeClick={this.handleChallengeClick}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </>
+    ) : (
+      <>
+        <Element name={block}>
+          <span className='hide-scrollable-anchor'></span>
+        </Element>
+        <div
+          className={`block block-grid challenge-grid-block ${isExpanded ? 'open' : ''}`}
+        >
+          <BlockHeader
+            blockDashed={block}
+            blockTitle={blockTitle}
+            blockLabel={blockLabel}
+            completedCount={completedCount}
+            courseCompletionStatus={courseCompletionStatus()}
+            handleClick={this.handleBlockClick}
+            isCompleted={isBlockCompleted}
+            isExpanded={isExpanded}
+            percentageCompleted={percentageCompleted}
+            accordion={accordion}
+            blockIntroArr={blockIntroArr}
+            isResetDisabled={completedCount === 0}
+            onResetClick={this.handleResetClick}
+          />
+
+          {isExpanded && (
+            <div className='accordion-block-expanded'>
+              {!isAudited && (
+                <div className='tags-wrapper'>
+                  <Link
+                    className='cert-tag'
+                    to={t('links:help-translate-link-url')}
+                  >
+                    {t('misc.translation-pending')}
+                  </Link>
+                </div>
+              )}
+              <div
+                id={`${block}-panel`}
+                className={isGridBlock ? 'challenge-grid-block-panel' : ''}
+              >
+                {isGridBlock ? (
+                  <GridMapChallenges
+                    jumpLink={true}
+                    challenges={extendedChallenges}
+                    blockTitle={blockTitle}
+                    isProjectBlock={isProjectBlock}
+                    onChallengeClick={this.handleChallengeClick}
+                  />
+                ) : (
+                  <ChallengesList
+                    challenges={extendedChallenges}
+                    onChallengeClick={this.handleChallengeClick}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -396,24 +560,56 @@ class Block extends Component<BlockProps> {
       </>
     );
 
+    const LinkBlock = (
+      <>
+        <Element name={block}>
+          <span className='hide-scrollable-anchor'></span>
+        </Element>
+        <BlockHeader
+          blockDashed={block}
+          blockTitle={blockTitle}
+          blockLabel={blockLabel}
+          completedCount={completedCount}
+          courseCompletionStatus={courseCompletionStatus()}
+          handleClick={this.handleBlockClick}
+          onLinkClick={this.handleChallengeClick}
+          isCompleted={isBlockCompleted}
+          isExpanded={isExpanded}
+          percentageCompleted={percentageCompleted}
+          accordion={accordion}
+          blockUrl={challenges?.[0]?.fields?.slug ?? ''}
+          isResetDisabled={completedCount === 0}
+          onResetClick={this.handleResetClick}
+        />
+      </>
+    );
+
     const layoutToComponent = {
       [BlockLayouts.ChallengeGrid]: AccordionBlock,
       [BlockLayouts.ChallengeList]: AccordionBlock,
-      [BlockLayouts.Link]: AccordionBlock,
+      [BlockLayouts.Link]: accordion ? LinkBlock : AccordionBlock,
       [BlockLayouts.ProjectList]: ProjectListBlock,
       [BlockLayouts.LegacyLink]: LegacyLinkBlock,
       [BlockLayouts.LegacyChallengeList]: LegacyChallengeListBlock,
-      [BlockLayouts.LegacyChallengeGrid]: LegacyChallengeGridBlock
+      [BlockLayouts.LegacyChallengeGrid]: LegacyChallengeGridBlock,
+      [BlockLayouts.DialogueGrid]: TaskGridBlock
     };
 
     return (
       !isEmptyBlock && (
         <>
           {layoutToComponent[blockLayout]}
-          {(!isGridSuperBlock || isProjectBlock) &&
-            superBlock !== SuperBlocks.FullStackDeveloper && (
-              <Spacer size='m' />
-            )}
+          {!chapterBasedSuperBlocks.includes(superBlock) && (
+            <Spacer size='xs' />
+          )}
+          <ResetProgressModal
+            blockTitle={blockTitle}
+            blockDashedName={block}
+            superBlock={superBlock}
+            show={this.state.showResetModal}
+            onHide={this.handleResetModalClose}
+            onResetComplete={this.handleResetConfirm}
+          />
         </>
       )
     );

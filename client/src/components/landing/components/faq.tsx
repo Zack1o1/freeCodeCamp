@@ -11,7 +11,7 @@ interface FaqItem {
 
 const Faq = (): JSX.Element => {
   const { t } = useTranslation();
-  const faqItems = t<string, string & FaqItem[]>('landing.faqs');
+  const faqItems = t('landing.faqs', { returnObjects: true }) as FaqItem[];
 
   return (
     <Col
@@ -22,6 +22,7 @@ const Faq = (): JSX.Element => {
       xs={12}
       className='faq-section'
     >
+      <Spacer size='l' />
       <h2 className='big-heading'>{t('landing.faq')}</h2>
       <Spacer size='xs' />
       {faqItems.map((faq, i) => (
@@ -37,7 +38,7 @@ const Faq = (): JSX.Element => {
           <Spacer size='xs' />
         </div>
       ))}
-      <h2 className='landing-page-happy'>{t('learn.read-this.p12')}</h2>
+      <h2 className='landing-page-happy'>{t('learn.happy-coding')}</h2>
       <Spacer size='m' />
       <BigCallToAction />
       <Spacer size='l' />

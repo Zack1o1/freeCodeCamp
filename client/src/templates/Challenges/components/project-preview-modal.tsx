@@ -1,14 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { connect } from 'react-redux';
 import { Button, Modal } from '@freecodecamp/ui';
 
+import { Loader } from '../../../components/helpers';
 import type { ChallengeData } from '../../../redux/prop-types';
 import {
   closeModal,
   setEditorFocusability,
   projectPreviewMounted
 } from '../redux/actions';
-import { isProjectPreviewModalOpenSelector } from '../redux/selectors';
+import {
+  isProjectPreviewLoadingSelector,
+  isProjectPreviewModalOpenSelector
+} from '../redux/selectors';
 import { projectPreviewId } from '../utils/frame';
 import Preview from './preview';
 
@@ -21,15 +25,17 @@ interface ProjectPreviewMountedPayload {
 interface Props {
   closeModal: (arg: string) => void;
   isOpen: boolean;
+  isLoading: boolean;
   projectPreviewMounted: (payload: ProjectPreviewMountedPayload) => void;
-  challengeData: ChallengeData | null;
+  challengeData?: ChallengeData | null;
   setEditorFocusability: (focusability: boolean) => void;
   previewTitle: string;
   closeText: string;
 }
 
 const mapStateToProps = (state: unknown) => ({
-  isOpen: isProjectPreviewModalOpenSelector(state) as boolean
+  isOpen: isProjectPreviewModalOpenSelector(state) as boolean,
+  isLoading: isProjectPreviewLoadingSelector(state) as boolean
 });
 const mapDispatchToProps = {
   closeModal,
@@ -40,15 +46,20 @@ const mapDispatchToProps = {
 function ProjectPreviewModal({
   closeModal,
   isOpen,
+  isLoading,
   projectPreviewMounted,
-  challengeData,
+  challengeData = null,
   setEditorFocusability,
   previewTitle,
   closeText
 }: Props): JSX.Element {
   useEffect(() => {
     if (isOpen) setEditorFocusability(false);
-  });
+  }, [isOpen, setEditorFocusability]);
+
+  const handlePreviewMounted = useCallback(() => {
+    projectPreviewMounted({ challengeData });
+  }, [projectPreviewMounted, challengeData]);
 
   return (
     <Modal
@@ -61,10 +72,21 @@ function ProjectPreviewModal({
     >
       <Modal.Header closeButtonClassNames='close'>{previewTitle}</Modal.Header>
       <Modal.Body className='project-preview-modal-body'>
-        <Preview
-          previewId={projectPreviewId}
-          previewMounted={() => projectPreviewMounted({ challengeData })}
-        />
+        {isLoading ? (
+          <div className='project-preview-modal-loader'>
+            <Loader />
+          </div>
+        ) : null}
+        <div
+          className={`project-preview-modal-content ${
+            isLoading ? 'is-loading' : ''
+          }`}
+        >
+          <Preview
+            previewId={projectPreviewId}
+            previewMounted={handlePreviewMounted}
+          />
+        </div>
       </Modal.Body>
       <Modal.Footer>
         <Button

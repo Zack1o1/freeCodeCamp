@@ -1,8 +1,8 @@
 import { FastifyPluginCallback } from 'fastify';
 import fp from 'fastify-plugin';
 
-import { HOME_LOCATION } from '../utils/env';
-import { allowedOrigins } from '../utils/allowed-origins';
+import { HOME_LOCATION } from '../utils/env.js';
+import { allowedOrigins } from '../utils/allowed-origins.js';
 
 const cors: FastifyPluginCallback = (fastify, _options, done) => {
   fastify.options('*', (_req, reply) => {
@@ -13,7 +13,7 @@ const cors: FastifyPluginCallback = (fastify, _options, done) => {
     const logger = fastify.log.child({ req });
     const origin = req.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {
-      // Do we want to log allowed origins?
+      logger.debug(`Allowing access to origin: ${origin}`);
       void reply.header('Access-Control-Allow-Origin', origin);
     } else {
       // TODO: Discuss if this is the correct approach. Standard practice is to
@@ -21,7 +21,12 @@ const cors: FastifyPluginCallback = (fastify, _options, done) => {
       // separately. If we switch to that approach we can replace use
       // @fastify/cors instead.
       void reply.header('Access-Control-Allow-Origin', HOME_LOCATION);
-      logger.debug(`Received request from disallowed origin: ${origin}`);
+
+      if (origin && !req.url?.startsWith('/status/')) {
+        logger.info(`Received request from disallowed origin: ${origin}`);
+      } else {
+        logger.debug(`Unknown or missing origin: ${origin}`);
+      }
     }
 
     void reply

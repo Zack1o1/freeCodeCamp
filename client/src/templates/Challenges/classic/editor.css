@@ -21,21 +21,21 @@
   z-index: 11;
 }
 
-/* NVDA skips the textarea in browse mode if there is no size */
-textarea.inputarea {
-  width: 1px !important;
-  height: 1px !important;
-}
-
 .editor-container {
   background: var(--editor-background);
 }
 
 .breadcrumbs-demo {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  z-index: var(--z-index-breadcrumbs);
   font-size: 16px;
   margin: 0;
   padding: 10px;
   height: var(--breadcrumbs-height);
+  background: var(--secondary-background);
 }
 
 @media screen and (max-height: 300px) {
@@ -53,11 +53,26 @@ textarea.inputarea {
 
 .editor-upper-jaw {
   max-width: unset !important;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .editor-upper-jaw code,
 .editor-lower-jaw code {
   white-space: pre-wrap;
+}
+
+.editor-upper-jaw pre {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.editor-file-name {
+  font-size: 18px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--quaternary-background);
+  padding-left: 11px;
+  overflow: hidden;
 }
 
 .action-row-container,

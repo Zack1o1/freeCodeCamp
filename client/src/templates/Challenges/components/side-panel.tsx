@@ -34,6 +34,7 @@ interface SidePanelProps extends DispatchProps, StateProps {
   hasDemo: boolean;
   toolPanel: ReactNode;
   tests: Test[];
+  showSidePanelTests?: boolean;
 }
 
 export function SidePanel({
@@ -43,7 +44,8 @@ export function SidePanel({
   hasDemo,
   toolPanel,
   tests,
-  openModal
+  openModal,
+  showSidePanelTests
 }: SidePanelProps): JSX.Element {
   return (
     <div
@@ -68,11 +70,15 @@ export function SidePanel({
             ></span>
           </Trans>
         </p>
-      )}
+      )}{' '}
       {challengeDescription}
-      <Spacer size='m' />
-      {toolPanel}
-      <TestSuite tests={tests} />
+      {showSidePanelTests && (
+        <>
+          <Spacer size='m' />
+          {toolPanel}
+          <TestSuite tests={tests} />
+        </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import {
   HelpBlock,
-  Alert,
+  Callout,
   FormGroup,
   FormGroupProps,
   FormControl,
@@ -32,7 +32,7 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
 type EmailProps = {
   email: string;
   isEmailVerified: boolean;
-  sendQuincyEmail: boolean;
+  sendQuincyEmail: boolean | null;
   t: TFunction;
   updateMyEmail: (email: string) => void;
   updateQuincyEmail: (sendQuincyEmail: boolean) => void;
@@ -168,8 +168,9 @@ function EmailSettings({
       {isEmailVerified ? null : (
         <FullWidthRow>
           <HelpBlock>
-            <Alert
-              variant='info'
+            <Callout
+              variant='note'
+              label={t('misc.note')}
               className='text-center'
               data-playwright-test-label='email-verification-alert'
             >
@@ -181,7 +182,7 @@ function EmailSettings({
                   to='/update-email'
                 />
               </Trans>
-            </Alert>
+            </Callout>
           </HelpBlock>
         </FullWidthRow>
       )}
@@ -250,7 +251,7 @@ function EmailSettings({
       <FullWidthRow>
         <ToggleButtonSetting
           action={t('settings.email.weekly')}
-          flag={sendQuincyEmail}
+          flag={!!sendQuincyEmail}
           flagName='sendQuincyEmail'
           offLabel={t('buttons.no-thanks')}
           onLabel={t('buttons.yes-please')}

@@ -1,26 +1,28 @@
-import { Portfolio } from '@prisma/client';
+import { Experience, Portfolio } from '@prisma/client';
 import { type FastifyPluginCallbackTypebox } from '@fastify/type-provider-typebox';
-import { ObjectId } from 'mongodb';
-import _ from 'lodash';
+import { ObjectId } from 'bson';
+import { omit } from 'lodash-es';
 
-import { isRestricted } from '../helpers/is-restricted';
-import * as schemas from '../../schemas';
-import { splitUser } from '../helpers/user-utils';
+import { isRestricted } from '../helpers/is-restricted.js';
+import * as schemas from '../../schemas.js';
+import { splitUser } from '../helpers/user-utils.js';
 import {
   normalizeChallenges,
-  NormalizedChallenge,
+  type NormalizedChallenge,
   normalizeFlags,
   normalizeProfileUI,
   normalizeTwitter,
-  removeNulls
-} from '../../utils/normalize';
+  normalizeBluesky,
+  removeNulls,
+  type NoNullProperties
+} from '../../utils/normalize.js';
 import {
   Calendar,
   getCalendar,
   getPoints,
   ProgressTimestamp
-} from '../../utils/progress';
-import { challengeTypes } from '../../../../shared/config/challenge-types';
+} from '../../utils/progress.js';
+import { challengeTypes } from '@freecodecamp/shared/config/challenge-types';
 
 type ProfileUI = Partial<{
   isLocked: boolean;
@@ -32,6 +34,7 @@ type ProfileUI = Partial<{
   showName: boolean;
   showPoints: boolean;
   showPortfolio: boolean;
+  showExperience: boolean;
   showTimeLine: boolean;
 }>;
 
@@ -46,6 +49,7 @@ type RawUser = {
   name: string;
   points: number;
   portfolio: Portfolio[];
+  experience: NoNullProperties<Experience>[];
   profileUI: ProfileUI;
 };
 
@@ -64,6 +68,7 @@ export const replacePrivateData = (user: RawUser) => {
     showName,
     showPoints,
     showPortfolio,
+    showExperience,
     showTimeLine
   } = user.profileUI;
 
@@ -82,7 +87,8 @@ export const replacePrivateData = (user: RawUser) => {
     location: showLocation ? user.location : '',
     name: showName ? user.name : '',
     points: showPoints ? user.points : null,
-    portfolio: showPortfolio ? user.portfolio : []
+    portfolio: showPortfolio ? user.portfolio : [],
+    experience: showExperience ? user.experience : []
   };
 };
 
@@ -101,7 +107,7 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
   done
 ) => {
   fastify.get(
-    '/api/users/get-public-profile',
+    '/users/get-public-profile',
     {
       schema: schemas.getPublicProfile,
       onRequest: (req, reply, done) => {
@@ -120,7 +126,7 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
       }
     },
     async (req, reply) => {
-      const logger = fastify.log.child({ req });
+      const logger = fastify.log.child({ req, res: reply });
       logger.info({ username: req.query.username });
       // TODO(Post-MVP): look for duplicates unless we can make username unique in the db.
       const user = await fastify.prisma.user.findFirst({
@@ -137,7 +143,7 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
 
       const [flags, rest] = splitUser(user);
 
-      const publicUser = _.omit(rest, [
+      const publicUser = omit(rest, [
         'currentChallengeId',
         'email',
         'emailVerified',
@@ -150,7 +156,6 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
         'unsubscribeId',
         'donationEmails',
         'externalId',
-        'usernameDisplay',
         'isBanned'
       ]);
 
@@ -166,7 +171,8 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
               [user.username]: {
                 isLocked: true,
                 profileUI: normalizedProfileUI,
-                username: user.username
+                username: user.username,
+                usernameDisplay: user.usernameDisplay || user.username
               }
             }
           },
@@ -184,19 +190,23 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
           joinDate: new ObjectId(user.id).getTimestamp().toISOString(),
           name: user.name ?? '',
           points: getPoints(progressTimestamps),
-          profileUI: normalizedProfileUI
+          profileUI: normalizedProfileUI,
+          experience: user.experience.map(removeNulls) ?? []
         });
 
         const returnedUser = {
           ...removeNulls(publicUser),
           ...normalizeFlags(flags),
           ...sharedUser,
+          picture: user.picture ?? '',
           profileUI: normalizedProfileUI,
           // TODO: should this always be returned? Shouldn't some privacy
           // setting control it? Same applies to website, githubProfile,
           // and linkedin.
           twitter: normalizeTwitter(user.twitter),
-          yearsTopContributor: user.yearsTopContributor
+          bluesky: normalizeBluesky(user.bluesky),
+          yearsTopContributor: user.yearsTopContributor,
+          usernameDisplay: user.usernameDisplay || user.username
         };
         return reply.send({
           // TODO(Post-MVP): just return a user object (i.e. returnedUser) and
@@ -213,26 +223,29 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
   );
 
   fastify.get(
-    '/api/users/exists',
+    '/users/exists',
     {
       schema: schemas.userExists,
       attachValidation: true
     },
     async (req, reply) => {
-      const logger = fastify.log.child({ req });
+      const logger = fastify.log.child({ req, res: reply });
 
       if (req.validationError) {
-        logger.warn({ validationError: req.validationError });
         void reply.code(400);
-        // TODO(Post-MVP): return a message telling the requester that their
-        // request was malformed.
-        return await reply.send({ exists: true });
+        logger
+          .child({ res: reply })
+          .warn('Validation error: No username provided');
+        return await reply.send({
+          type: 'danger',
+          message: 'username parameter is required'
+        });
       }
 
       const username = req.query.username.toLowerCase();
 
       if (isRestricted(username)) {
-        logger.info({ username }, 'Restricted username');
+        logger.info(`Restricted username: ${username}`);
         return await reply.send({ exists: true });
       }
 
@@ -241,6 +254,11 @@ export const userPublicGetRoutes: FastifyPluginCallbackTypebox = (
           where: { username }
         })) > 0;
 
+      if (exists) {
+        logger.info(`User exists for username: ${username}`);
+      } else {
+        logger.info(`User does not exist for username: ${username}`);
+      }
       await reply.send({ exists });
     }
   );
